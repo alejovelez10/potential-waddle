@@ -32,6 +32,7 @@ import { EmailModule } from './modules/email/email.module';
 import { TurnstileModule } from './modules/turnstile/turnstile.module';
 import { PineconeModule } from './modules/pinecone/pinecone.module';
 import { RafaModule } from './modules/rafa/rafa.module';
+import { RafaAiAgentModule } from './modules/rafa-ai-agent/rafa-ai-agent.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { TenantInterceptor } from './modules/tenant/tenant.interceptor';
@@ -85,6 +86,7 @@ import { ForcedPublicModule } from './modules/forced-public/forced-public.module
     MapModule,
     PineconeModule,
     RafaModule,
+    RafaAiAgentModule,
     DashboardModule,
     TenantModule,
     DocumentsModule,
