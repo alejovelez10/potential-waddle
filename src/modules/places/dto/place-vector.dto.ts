@@ -2,6 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Place } from '../entities';
 import { PlaceDto } from './place.dto';
+import { ReviewStatusEnum } from 'src/modules/reviews/enums';
+
+type SafeReview = { rating: number; comment: string | null; authorDisplayName: string; createdAt: Date };
 
 interface Props {
   place?: Place;
@@ -136,6 +139,12 @@ export class PlaceVectorDto extends PlaceDto {
   howToDress: string;
   reviewCount: number;
 
+  @ApiProperty({
+    description: 'Public approved reviews (safe projection — no reviewer identity)',
+    required: false,
+  })
+  reviews: SafeReview[];
+
   constructor({ place, reviewId }: Props) {
     super(place, reviewId);
     this.googleMapsUrl = place?.googleMapsUrl;
@@ -161,5 +170,14 @@ export class PlaceVectorDto extends PlaceDto {
     this.googleMapsUrl = place?.googleMapsUrl ?? '';
     this.howToDress = place?.howToDress ?? '';
     this.reviewCount = place?.reviewCount ?? 0;
+    // Safe review projection: approved + public only, reviewer reduced to a display name.
+    this.reviews = (place?.reviews ?? [])
+      .filter(r => r.isPublic && r.status === ReviewStatusEnum.APPROVED)
+      .map(r => ({
+        rating: r.rating,
+        comment: r.comment,
+        authorDisplayName: r.user?.username ?? 'Anónimo',
+        createdAt: r.createdAt,
+      }));
   }
 }

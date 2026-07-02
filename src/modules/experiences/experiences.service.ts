@@ -259,6 +259,8 @@ export class ExperiencesService {
         images: { imageResource: true },
         town: { department: true },
         guide: true,
+        // reviewer `user` is loaded ONLY to derive a safe display name in the DTO; never serialized.
+        reviews: { user: true },
       },
       order,
       where: {

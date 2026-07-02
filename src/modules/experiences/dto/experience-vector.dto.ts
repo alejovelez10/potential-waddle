@@ -3,6 +3,9 @@ import { Experience } from '../entities';
 import { TownDto } from 'src/modules/towns/dto';
 import { ExperienceGuide } from '../interfaces';
 import { GuideDto } from 'src/modules/guides/dto/guide.dto';
+import { ReviewStatusEnum } from 'src/modules/reviews/enums';
+
+type SafeReview = { rating: number; comment: string | null; authorDisplayName: string; createdAt: Date };
 
 export class ExperienceVectorDto {
   id: string;
@@ -29,7 +32,20 @@ export class ExperienceVectorDto {
 
   points: number;
 
-  reviews: number;
+  reviews: SafeReview[];
+
+  // Flattened departure/arrival (Point → lat/long) + reference descriptions.
+  departureLatitude?: number;
+
+  departureLongitude?: number;
+
+  departureDescription?: string;
+
+  arrivalLatitude?: number;
+
+  arrivalLongitude?: number;
+
+  arrivalDescription?: string;
 
   minAge?: number;
 
@@ -76,7 +92,22 @@ export class ExperienceVectorDto {
     this.totalDistance = data.totalDistance || 0;
     this.rating = data.rating;
     this.points = data.points;
-    this.reviews = data.reviews?.length || 0;
+    // Safe review projection: approved + public only, reviewer reduced to a display name.
+    this.reviews = (data.reviews ?? [])
+      .filter(r => r.isPublic && r.status === ReviewStatusEnum.APPROVED)
+      .map(r => ({
+        rating: r.rating,
+        comment: r.comment,
+        authorDisplayName: r.user?.username ?? 'Anónimo',
+        createdAt: r.createdAt,
+      }));
+    // Flatten departure/arrival Points (coordinates: [longitude, latitude]).
+    this.departureLongitude = data.departureLocation?.coordinates?.[0] ?? undefined;
+    this.departureLatitude = data.departureLocation?.coordinates?.[1] ?? undefined;
+    this.departureDescription = data.departureDescription ?? undefined;
+    this.arrivalLongitude = data.arrivalLocation?.coordinates?.[0] ?? undefined;
+    this.arrivalLatitude = data.arrivalLocation?.coordinates?.[1] ?? undefined;
+    this.arrivalDescription = data.arrivalDescription ?? undefined;
     this.minAge = data.minAge || undefined;
     this.maxAge = data.maxAge || undefined;
     this.minParticipants = data.minParticipants || undefined;

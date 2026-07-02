@@ -188,7 +188,8 @@ export class PlacesService {
     const { where, order } = generatePlaceQueryFilters(filters);
     const relations: FindOptionsRelations<Place> = {
       town: { department: true },
-      reviews: true,
+      // reviewer `user` is loaded ONLY to derive a safe display name in the DTO; never serialized.
+      reviews: { user: true },
       categories: { icon: true },
       images: { imageResource: true },
     };
