@@ -30,4 +30,5 @@ export enum SwaggerTags {
   Analytics = 'Analytics',
   Badges = 'Badges',
   Terms = 'Terms',
+  RafaAdmin = 'RafaAdmin',
 }
