@@ -11,6 +11,8 @@ import {
   SkillResource,
   Tool,
 } from './entities';
+import { RafaAdminController } from './rafa-admin.controller';
+import { RafaAdminService } from './rafa-admin.service';
 
 /**
  * Rafa AI agent module (NEW — isolated from the legacy `src/modules/rafa/`,
@@ -33,5 +35,7 @@ import {
       KnowledgeSourceSyncLog,
     ]),
   ],
+  controllers: [RafaAdminController],
+  providers: [RafaAdminService],
 })
 export class RafaAiAgentModule {}
