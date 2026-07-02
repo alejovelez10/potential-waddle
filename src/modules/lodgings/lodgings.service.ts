@@ -273,6 +273,10 @@ export class LodgingsService {
         categories: { icon: true },
         images: { imageResource: true },
         facilities: { icon: true },
+        lodgingRoomTypes: { images: { imageResource: true } },
+        places: { place: true },
+        // reviewer `user` is loaded ONLY to derive a safe display name in the DTO; never serialized.
+        reviews: { user: true },
       },
       order,
       where: {

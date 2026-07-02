@@ -239,6 +239,9 @@ export class RestaurantsService {
         categories: { icon: true },
         images: { imageResource: true },
         facilities: { icon: true },
+        menus: true,
+        // reviewer `user` is loaded ONLY to derive a safe display name in the DTO; never serialized.
+        reviews: { user: true },
       },
       order,
       where: {

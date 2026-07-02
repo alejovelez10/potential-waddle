@@ -2,6 +2,29 @@ import { ApiProperty } from '@nestjs/swagger';
 import { LodgingIndexDto } from './lodging-index.dto';
 import { FacilityDto } from 'src/modules/core/dto';
 import { Lodging } from '../entities';
+import { ReviewStatusEnum } from 'src/modules/reviews/enums';
+
+type SafeReview = { rating: number; comment: string | null; authorDisplayName: string; createdAt: Date };
+
+type RoomTypeFull = {
+  name: string;
+  description: string | null;
+  price: number;
+  maxCapacity: number;
+  bedCount: number;
+  bedType: string | null;
+  roomSize: number | null;
+  bathroomType: string | null;
+  hasWifi: boolean;
+  hasAirConditioning: boolean;
+  hasKitchen: boolean;
+  hasBalcony: boolean;
+  view: string | null;
+  amenities: string[];
+  images: string[];
+};
+
+type NearbyPlace = { placeName?: string; distance: number };
 
 export class LodgingVectorDto extends LodgingIndexDto {
   @ApiProperty({
@@ -147,6 +170,13 @@ export class LodgingVectorDto extends LodgingIndexDto {
   })
   googleMapsReviewsCount?: number;
 
+  // Full structured room types (with flat image URLs), nearby places and safe public reviews.
+  lodgingRoomTypes?: RoomTypeFull[];
+
+  nearbyPlaces?: NearbyPlace[];
+
+  reviews?: SafeReview[];
+
   constructor(lodging?: Lodging, userReview?: string) {
     super(lodging, userReview);
 
@@ -171,5 +201,36 @@ export class LodgingVectorDto extends LodgingIndexDto {
     this.capacity = lodging.capacity || undefined;
     this.googleMapsRating = lodging.googleMapsRating || undefined;
     this.googleMapsReviewsCount = lodging.googleMapsReviewsCount || undefined;
+    // Full room types with flat image URL strings (not {imageResource:{url}}).
+    this.lodgingRoomTypes = (lodging.lodgingRoomTypes ?? []).map(rt => ({
+      name: rt.name,
+      description: rt.description,
+      price: rt.price,
+      maxCapacity: rt.maxCapacity,
+      bedCount: rt.bedCount,
+      bedType: rt.bedType,
+      roomSize: rt.roomSize,
+      bathroomType: rt.bathroomType,
+      hasWifi: rt.hasWifi,
+      hasAirConditioning: rt.hasAirConditioning,
+      hasKitchen: rt.hasKitchen,
+      hasBalcony: rt.hasBalcony,
+      view: rt.view,
+      amenities: rt.amenities ?? [],
+      images: (rt.images ?? []).map(i => i.imageResource?.url).filter((u): u is string => !!u),
+    }));
+    this.nearbyPlaces = (lodging.places ?? []).map(lp => ({
+      placeName: lp.place?.name,
+      distance: lp.distance,
+    }));
+    // Safe review projection: approved + public only, reviewer reduced to a display name.
+    this.reviews = (lodging.reviews ?? [])
+      .filter(r => r.isPublic && r.status === ReviewStatusEnum.APPROVED)
+      .map(r => ({
+        rating: r.rating,
+        comment: r.comment,
+        authorDisplayName: r.user?.username ?? 'Anónimo',
+        createdAt: r.createdAt,
+      }));
   }
 }

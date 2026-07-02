@@ -2,6 +2,9 @@ import type { Restaurant } from '../entities';
 import { TownDto } from 'src/modules/towns/dto';
 import { PlaceDto } from 'src/modules/places/dto';
 import { CategoryDto, FacilityDto } from 'src/modules/core/dto';
+import { ReviewStatusEnum } from 'src/modules/reviews/enums';
+
+type SafeReview = { rating: number; comment: string | null; authorDisplayName: string; createdAt: Date };
 
 export class RestaurantVectorDto {
   id: string;
@@ -76,6 +79,13 @@ export class RestaurantVectorDto {
 
   showBinntuReviews?: boolean;
 
+  // Full carta (flattened MenuData), price ranges and safe public reviews.
+  menu?: Record<string, unknown> | null;
+
+  priceRanges?: { label: string; priceFrom: number; featured?: boolean }[];
+
+  reviews?: SafeReview[];
+
   constructor({ data }: { data?: Restaurant | null }) {
     if (!data) return;
 
@@ -114,5 +124,17 @@ export class RestaurantVectorDto {
     this.googleMapsReviewsCount = data.googleMapsReviewsCount ?? undefined;
     this.showGoogleMapsReviews = data.showGoogleMapsReviews ?? undefined;
     this.showBinntuReviews = data.showBinntuReviews ?? undefined;
+    // Carta SINGULAR: the first menu's flattened MenuData JSON (or null).
+    this.menu = data.menus?.[0]?.data ?? null;
+    this.priceRanges = data.priceRanges ?? [];
+    // Safe review projection: approved + public only, reviewer reduced to a display name.
+    this.reviews = (data.reviews ?? [])
+      .filter(r => r.isPublic && r.status === ReviewStatusEnum.APPROVED)
+      .map(r => ({
+        rating: r.rating,
+        comment: r.comment,
+        authorDisplayName: r.user?.username ?? 'Anónimo',
+        createdAt: r.createdAt,
+      }));
   }
 }
