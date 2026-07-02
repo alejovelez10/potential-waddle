@@ -2,7 +2,7 @@ import { AppIconDto, CategoryDto, FacilityDto } from 'src/modules/core/dto';
 import { Experience } from '../entities';
 import { TownDto } from 'src/modules/towns/dto';
 import { ExperienceGuide } from '../interfaces';
-import { GuideDto } from 'src/modules/guides/dto/guide.dto';
+import { GuideVectorDto } from 'src/modules/guides/dto/guide-vector.dto';
 import { ReviewStatusEnum } from 'src/modules/reviews/enums';
 
 type SafeReview = { rating: number; comment: string | null; authorDisplayName: string; createdAt: Date };
@@ -71,7 +71,7 @@ export class ExperienceVectorDto {
 
   guides: ExperienceGuide[];
 
-  guide?: GuideDto;
+  guide?: GuideVectorDto;
 
   paymentMethods?: string[];
 
@@ -87,7 +87,10 @@ export class ExperienceVectorDto {
     this.price = data.price;
     this.priceLabel = data.priceLabel || 'Persona';
     this.additionalPrices = data.additionalPrices || [];
-    this.guide = data.guide ? new GuideDto({ data: data.guide }) : undefined;
+    // PII-safe projection (CR-01): the guide is exposed on the UNAUTHENTICATED
+    // /public/full-info endpoint, so it must go through GuideVectorDto (no
+    // document/documentType/email/phone/address/user) — never the full GuideDto.
+    this.guide = data.guide ? new GuideVectorDto({ data: data.guide }) : undefined;
     this.travelTime = data.travelTime || 0;
     this.totalDistance = data.totalDistance || 0;
     this.rating = data.rating;

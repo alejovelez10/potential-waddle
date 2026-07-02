@@ -87,6 +87,35 @@ describe('ExperienceVectorDto', () => {
     expect(review.id).toBeUndefined();
   });
 
+  it('projects the guide through the PII-safe GuideVectorDto (CR-01)', () => {
+    const guide = {
+      id: 'guide-1',
+      slug: 'maria-gomez',
+      firstName: 'María',
+      lastName: 'Gómez',
+      // PII that MUST NOT leak on the unauthenticated public endpoint:
+      email: 'maria@example.com',
+      documentType: 'CC',
+      document: '1234567890',
+      phone: '+57 300 111 2222',
+      address: 'Cra 5 #12-30',
+      user: { id: 'u-9', email: 'maria.private@example.com', username: 'maria.g' },
+      whatsapp: '+57 300 000 0000',
+    };
+    const dto = new ExperienceVectorDto({ data: makeExperience({ guide } as Partial<Experience>) });
+    const bag = dto.guide as unknown as Record<string, unknown>;
+
+    expect(bag.document).toBeUndefined();
+    expect(bag.documentType).toBeUndefined();
+    expect(bag.email).toBeUndefined();
+    expect(bag.phone).toBeUndefined();
+    expect(bag.address).toBeUndefined();
+    expect(bag.user).toBeUndefined();
+    // Safe business fields are still exposed.
+    expect(dto.guide?.firstName).toBe('María');
+    expect(dto.guide?.whatsapp).toBe('+57 300 000 0000');
+  });
+
   it('handles missing reviews/locations gracefully', () => {
     const dto = new ExperienceVectorDto({
       data: makeExperience({ reviews: undefined, departureLocation: undefined, arrivalLocation: undefined }),
