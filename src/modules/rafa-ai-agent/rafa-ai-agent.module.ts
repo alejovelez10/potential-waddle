@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HttpModule } from '@nestjs/axios';
 
 import {
   ChatConversation,
@@ -34,6 +35,9 @@ import { RafaAdminService } from './rafa-admin.service';
       KnowledgeSource,
       KnowledgeSourceSyncLog,
     ]),
+    // HttpModule powers the rafa-sync proxy hop (nest → rafa /internal/sync).
+    // ConfigModule is global (app.module isGlobal: true) so it needs no import here.
+    HttpModule,
   ],
   controllers: [RafaAdminController],
   providers: [RafaAdminService],

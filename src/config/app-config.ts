@@ -82,6 +82,10 @@ export interface EnvironmentVariables {
     apiKey: string;
     baseUrl: string;
   };
+  rafa: {
+    baseUrl: string;
+    internalSecret: string;
+  };
   analytics: {
     apiKey: string;
   };
@@ -182,6 +186,13 @@ export const appConfig = (): EnvironmentVariables => ({
   kmizen: {
     apiKey: process.env.KMIZEN_API_KEY || '',
     baseUrl: process.env.KMIZEN_BASE_URL || '',
+  },
+  // Rafa AI service (rafa-ai-service) — the sync-proxy hop target. `internalSecret`
+  // MUST match rafa's INTERNAL_SECRET (Plan 05-01); it is sent in the
+  // `x-internal-secret` header on POST /internal/sync. Fail-closed if unset.
+  rafa: {
+    baseUrl: process.env.RAFA_BASE_URL || '',
+    internalSecret: process.env.RAFA_INTERNAL_SECRET || '',
   },
   analytics: {
     apiKey: process.env.ANALYTICS_API_KEY || '',
