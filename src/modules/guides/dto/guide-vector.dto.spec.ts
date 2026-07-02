@@ -101,6 +101,27 @@ describe('GuideVectorDto', () => {
     });
   });
 
+  describe('guideType + towns assignment (WR-02)', () => {
+    it('assigns guideType and towns so rafa columns are not empty', () => {
+      const guide = makeGuide({
+        guideType: ['naturaleza', 'aventura'],
+        towns: [{ id: 't-1', name: 'San Rafael' }],
+      } as Partial<Guide>);
+      const dto = new GuideVectorDto({ data: guide });
+
+      expect(dto.guideType).toEqual(['naturaleza', 'aventura']);
+      // rafa reads towns[].name — same PII-safe TownDto projection used elsewhere.
+      expect(dto.towns?.map(t => t.name)).toEqual(['San Rafael']);
+    });
+
+    it('falls back to empty arrays when guideType/towns are absent', () => {
+      const dto = new GuideVectorDto({ data: makeGuide({ guideType: undefined, towns: undefined } as Partial<Guide>) });
+
+      expect(dto.guideType).toEqual([]);
+      expect(dto.towns).toEqual([]);
+    });
+  });
+
   describe('reviews safe projection (T-04.1-07)', () => {
     it('projects ONLY approved+public reviews to a safe shape', () => {
       const dto = new GuideVectorDto({ data: makeGuide() });

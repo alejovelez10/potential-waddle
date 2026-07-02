@@ -128,6 +128,7 @@ export class GuideVectorDto {
 
   // Relationships
   town?: TownDto;
+  towns?: TownDto[];
   categories?: CategoryDto[];
   experiences?: GuideExperienceDto[];
   isPublic?: boolean;
@@ -147,6 +148,11 @@ export class GuideVectorDto {
     this.tiktok = data.tiktok;
     this.isAvailable = data.isAvailable;
     this.languages = data.languages;
+    // WR-02: these were declared but never assigned, so rafa's guide_type/towns
+    // columns were permanently empty. guideType is a string[] passthrough; towns is
+    // the same PII-safe TownDto projection used elsewhere (rafa reads towns[].name).
+    this.guideType = data.guideType ?? [];
+    this.towns = data.towns?.map(town => new TownDto(town)) ?? [];
     // Safe review projection: approved + public only, reviewer reduced to a display name.
     this.reviews = (data.reviews ?? [])
       .filter(r => r.isPublic && r.status === ReviewStatusEnum.APPROVED)
