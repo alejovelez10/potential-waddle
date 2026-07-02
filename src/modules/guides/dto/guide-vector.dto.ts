@@ -1,10 +1,18 @@
 import { CategoryDto } from 'src/modules/core/dto';
 import { TownDto } from 'src/modules/towns/dto';
 import { Guide } from '../entities/guide.entity';
-import { UserDto } from 'src/modules/users/dto/user.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { GuideExperienceDto } from './guide-experience.dto';
+import { ReviewStatusEnum } from '../../reviews/enums';
 
+/**
+ * Public projection of a Guide for the UNAUTHENTICATED /public/full-info endpoint.
+ *
+ * SECURITY (T-04.1-06): this DTO deliberately does NOT expose the guide's national
+ * ID (document/documentType), email, phone, address, nor the full mapped `user`.
+ * The *VectorDto constructor is the only projection boundary between the DB and the
+ * open internet, so those fields are dropped here on purpose — do NOT re-add them.
+ */
 export class GuideVectorDto {
   @ApiProperty({
     example: '123e4567-e89b-12d3-a456-426614174000',
@@ -19,12 +27,6 @@ export class GuideVectorDto {
   slug: string;
 
   @ApiProperty({
-    example: 'john.doe@example.com',
-    description: 'Email address of the guide',
-  })
-  email: string;
-
-  @ApiProperty({
     example: 'John',
     description: 'The first name of the guide',
   })
@@ -37,35 +39,11 @@ export class GuideVectorDto {
   lastName: string;
 
   @ApiProperty({
-    example: 'DNI',
-    description: 'Type of identification document',
-  })
-  documentType: string;
-
-  @ApiProperty({
-    example: '12345678',
-    description: 'Identification document number',
-  })
-  document: string;
-
-  @ApiProperty({
     example: '+51987654321',
-    description: 'Contact phone number',
-  })
-  phone: string;
-
-  @ApiProperty({
-    example: '+51987654321',
-    description: 'WhatsApp contact number',
+    description: 'WhatsApp contact number (public business channel)',
     required: false,
   })
   whatsapp?: string;
-
-  @ApiProperty({
-    example: 'Av. Example 123',
-    description: 'Physical address of the guide',
-  })
-  address: string;
 
   @ApiProperty({
     example: 'Experienced tour guide with 5 years of experience...',
@@ -133,6 +111,12 @@ export class GuideVectorDto {
   isAvailable?: boolean;
 
   @ApiProperty({
+    description: 'Public approved reviews (safe projection — no reviewer identity)',
+    required: false,
+  })
+  reviews: { rating: number; comment: string | null; authorDisplayName: string; createdAt: Date }[];
+
+  @ApiProperty({
     description: 'Creation timestamp',
   })
   createdAt?: Date;
@@ -144,7 +128,6 @@ export class GuideVectorDto {
 
   // Relationships
   town?: TownDto;
-  user?: UserDto;
   categories?: CategoryDto[];
   experiences?: GuideExperienceDto[];
   isPublic?: boolean;
@@ -154,14 +137,9 @@ export class GuideVectorDto {
 
     this.id = data.id;
     this.slug = data.slug;
-    this.email = data.email;
     this.firstName = data.firstName;
     this.lastName = data.lastName;
-    this.documentType = data.documentType;
-    this.document = data.document;
-    this.phone = data.phone;
     this.whatsapp = data.whatsapp;
-    this.address = data.address;
     this.biography = data.biography;
     this.facebook = data.facebook;
     this.instagram = data.instagram;
@@ -169,8 +147,16 @@ export class GuideVectorDto {
     this.tiktok = data.tiktok;
     this.isAvailable = data.isAvailable;
     this.languages = data.languages;
-    // Map relationships
-    this.user = data.user ? new UserDto(data.user) : undefined;
+    // Safe review projection: approved + public only, reviewer reduced to a display name.
+    this.reviews = (data.reviews ?? [])
+      .filter(r => r.isPublic && r.status === ReviewStatusEnum.APPROVED)
+      .map(r => ({
+        rating: r.rating,
+        comment: r.comment,
+        authorDisplayName: r.user?.username ?? 'Anónimo',
+        createdAt: r.createdAt,
+      }));
+    // Map relationships (NOTE: reviewer/guide `user` is intentionally never serialized).
     this.categories = data.categories?.map(category => new CategoryDto(category));
     this.experiences = data.experiences?.map(experience => new GuideExperienceDto({ data: experience })) || [];
     this.isPublic = data.isPublic;

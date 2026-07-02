@@ -267,7 +267,8 @@ export class GuidesService {
     const relations: FindOptionsRelations<Guide> = {
       categories: { icon: true },
       images: { imageResource: true },
-      user: true,
+      // reviewer `user` is loaded ONLY to derive a safe display name in the DTO; never serialized.
+      reviews: { user: true },
       towns: { department: true },
       experiences: {
         images: { imageResource: true },
