@@ -14,6 +14,8 @@ import {
 } from './entities';
 import { RafaAdminController } from './rafa-admin.controller';
 import { RafaAdminService } from './rafa-admin.service';
+import { RafaSyncController } from './rafa-sync.controller';
+import { RafaSyncService } from './rafa-sync.service';
 
 /**
  * Rafa AI agent module (NEW — isolated from the legacy `src/modules/rafa/`,
@@ -39,7 +41,7 @@ import { RafaAdminService } from './rafa-admin.service';
     // ConfigModule is global (app.module isGlobal: true) so it needs no import here.
     HttpModule,
   ],
-  controllers: [RafaAdminController],
-  providers: [RafaAdminService],
+  controllers: [RafaAdminController, RafaSyncController],
+  providers: [RafaAdminService, RafaSyncService],
 })
 export class RafaAiAgentModule {}
