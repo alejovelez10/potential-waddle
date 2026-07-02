@@ -89,6 +89,15 @@ describe('RestaurantVectorDto', () => {
     expect(review.id).toBeUndefined();
   });
 
+  it('does not throw when location is null (WR-01) and falls back to 0/0', () => {
+    let dto!: RestaurantVectorDto;
+    expect(() => {
+      dto = new RestaurantVectorDto({ data: makeRestaurant({ location: null } as unknown as Partial<Restaurant>) });
+    }).not.toThrow();
+    expect(dto.longitude).toBe(0);
+    expect(dto.latitude).toBe(0);
+  });
+
   it('handles missing menu/reviews gracefully', () => {
     const dto = new RestaurantVectorDto({ data: makeRestaurant({ menus: undefined, reviews: undefined }) });
     expect(dto.menu).toBeNull();

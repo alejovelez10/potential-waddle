@@ -107,8 +107,10 @@ export class RestaurantVectorDto {
     this.facebook = data.facebook ?? undefined;
     this.lowestPrice = data.lowestPrice ?? undefined;
     this.highestPrice = data.higherPrice ?? undefined;
-    this.longitude = data.location.coordinates[0] ?? 0;
-    this.latitude = data.location.coordinates[1] ?? 0;
+    // Null-safe (WR-01): location is a nullable Point (create allows location: null).
+    // Mirror lodging/place DTOs so a restaurant without coordinates does not 500 the sync.
+    this.longitude = data.location?.coordinates?.[0] ?? 0;
+    this.latitude = data.location?.coordinates?.[1] ?? 0;
     this.urbanCenterDistance = data.urbanCenterDistance ?? 0;
     this.googleMapsUrl = data.googleMapsUrl ?? undefined;
     this.howToGetThere = data.howToGetThere ?? undefined;
