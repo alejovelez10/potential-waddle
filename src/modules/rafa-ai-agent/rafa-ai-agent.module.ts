@@ -14,6 +14,8 @@ import {
 } from './entities';
 import { RafaAdminController } from './rafa-admin.controller';
 import { RafaAdminService } from './rafa-admin.service';
+import { RafaChatController } from './rafa-chat.controller';
+import { RafaChatService } from './rafa-chat.service';
 import { RafaSyncController } from './rafa-sync.controller';
 import { RafaSyncService } from './rafa-sync.service';
 
@@ -41,7 +43,7 @@ import { RafaSyncService } from './rafa-sync.service';
     // ConfigModule is global (app.module isGlobal: true) so it needs no import here.
     HttpModule,
   ],
-  controllers: [RafaAdminController, RafaSyncController],
-  providers: [RafaAdminService, RafaSyncService],
+  controllers: [RafaAdminController, RafaSyncController, RafaChatController],
+  providers: [RafaAdminService, RafaSyncService, RafaChatService],
 })
 export class RafaAiAgentModule {}
