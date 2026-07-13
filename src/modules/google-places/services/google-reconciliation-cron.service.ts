@@ -77,6 +77,12 @@ export class GoogleReconciliationCronService {
     waitForCompletion: true,
   })
   async runMonthly(): Promise<void> {
+    // Kill-switch por env (Railway) — apaga el gasto de Apify sin redeploy. Default: encendido.
+    if (process.env.GOOGLE_CRONS_ENABLED === 'false') {
+      this.logger.warn('(google-reconciliation-cron) deshabilitado por GOOGLE_CRONS_ENABLED=false — saltando');
+      return;
+    }
+
     const acquired = await this.lockService.tryAcquire(GoogleReconciliationCronService.LOCK_KEY);
     if (!acquired) {
       this.logger.warn(
