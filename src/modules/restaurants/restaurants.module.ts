@@ -21,6 +21,7 @@ import { ReviewsModule } from '../reviews/reviews.module';
 import { TermsModule } from '../terms/terms.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { TranslationsModule } from '../translations/translations.module';
 
 @Module({
   controllers: [RestaurantsController, MenuController],
@@ -42,6 +43,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     TermsModule,
     DocumentsModule,
     SubscriptionsModule,
+    TranslationsModule,
   ],
 })
 export class RestaurantsModule {}

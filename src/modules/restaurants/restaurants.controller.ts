@@ -36,6 +36,7 @@ import { RestaurantVectorDto } from './dto/restaurant-vector.dto';
 import { GetUser } from '../common/decorators';
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
+import { RequestLocale } from '../translations/request-locale.decorator';
 
 @Controller(SwaggerTags.Restaurants)
 @ApiTags(SwaggerTags.Restaurants)
@@ -81,12 +82,13 @@ export class RestaurantsController {
     @RestaurantFilters() filters: RestaurantFiltersDto,
     @GetUser() user: User | undefined,
     @Req() request: Request,
+    @RequestLocale() locale: string,
   ) {
     const tenantId = (request as any)[TENANT_ID_KEY];
     if (tenantId && !filters.townId) {
       filters.townId = tenantId;
     }
-    return this.restaurantsService.findPublicRestaurants({ filters, user });
+    return this.restaurantsService.findPublicRestaurants({ filters, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
@@ -149,8 +151,8 @@ export class RestaurantsController {
   @Get('slug/:slug')
   @OptionalAuth()
   @ApiOkResponse({ description: 'Restaurant Detail', type: RestaurantDto })
-  findOneBySlug(@Param('slug') slug: string, @GetUser() user?: User) {
-    return this.restaurantsService.findOneBySlug({ slug, user });
+  findOneBySlug(@Param('slug') slug: string, @GetUser() user?: User, @RequestLocale() locale: string = 'es') {
+    return this.restaurantsService.findOneBySlug({ slug, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------

@@ -36,6 +36,7 @@ import { CommerceFilters, CommerceListQueryParamsDocs } from './decorators';
 import { GetUser } from '../common/decorators';
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
+import { RequestLocale } from '../translations/request-locale.decorator';
 
 @Controller(SwaggerTags.Commerce)
 @ApiTags(SwaggerTags.Commerce)
@@ -67,12 +68,13 @@ export class CommerceController {
     @CommerceFilters() filters: CommerceFiltersDto,
     @GetUser() user: User | undefined,
     @Req() request: Request,
+    @RequestLocale() locale: string,
   ) {
     const tenantId = (request as any)[TENANT_ID_KEY];
     if (tenantId && !filters.townId) {
       filters.townId = tenantId;
     }
-    return this.commerceService.findPublicCommerce({ filters, user });
+    return this.commerceService.findPublicCommerce({ filters, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
@@ -137,8 +139,8 @@ export class CommerceController {
   @Get('slug/:slug')
   @OptionalAuth()
   @ApiOkResponse({ description: 'Commerce Detail', type: CommerceFullDto })
-  findOneBySlug(@Param('slug') slug: string, @GetUser() user?: User) {
-    return this.commerceService.findOneBySlug({ slug, user });
+  findOneBySlug(@Param('slug') slug: string, @GetUser() user?: User, @RequestLocale() locale: string = 'es') {
+    return this.commerceService.findOneBySlug({ slug, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------

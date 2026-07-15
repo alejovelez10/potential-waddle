@@ -38,6 +38,7 @@ import {
   CommerceTermsStatus,
   CommerceDocsStatus,
 } from './utils/compute-commerce-completion';
+import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 @Injectable()
 export class CommerceService {
@@ -65,6 +66,7 @@ export class CommerceService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly translationResolver: TranslationResolverService,
   ) {}
 
   async findAll({ filters }: CommerceFindAllParams = {}) {
@@ -172,7 +174,7 @@ export class CommerceService {
     return result;
   }
 
-  async findPublicCommerce({ filters, user }: CommerceFindAllParams = {}) {
+  async findPublicCommerce({ filters, user, locale = 'es' }: CommerceFindAllParams = {}) {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateCommerceQueryFiltersAndSort(filters);
 
@@ -210,9 +212,19 @@ export class CommerceService {
       sortedCommerces = commerces.sort(() => Math.random() - 0.5);
     }
 
+    // Batch-load translations once for all commerces (N+1 guard — zero AI at request time)
+    let translationsMap: Map<string, Record<string, string>> = new Map();
+    if (locale !== 'es' && sortedCommerces.length) {
+      translationsMap = await this.translationResolver.batchLoad('commerce', sortedCommerces.map(c => c.id), locale);
+    }
+
     return sortedCommerces.map(commerce => {
       const userReview = userReviews.find(r => r.commerce?.id === commerce.id);
-      return new CommerceIndexDto(commerce, userReview?.id);
+      const base =
+        locale !== 'es'
+          ? this.translationResolver.overlay({ ...commerce }, translationsMap.get(commerce.id) ?? {})
+          : commerce;
+      return new CommerceIndexDto(base as Commerce, userReview?.id);
     });
   }
 
@@ -441,7 +453,7 @@ export class CommerceService {
   // ------------------------------------------------------------------------------------------------
   // Find one commerce by slug
   // ------------------------------------------------------------------------------------------------
-  async findOneBySlug({ slug, user }: { slug: string; user?: User }) {
+  async findOneBySlug({ slug, user, locale = 'es' }: { slug: string; user?: User; locale?: string }) {
     const relations: FindOptionsRelations<Commerce> = {
       categories: { icon: true },
       facilities: { icon: true },
@@ -476,7 +488,16 @@ export class CommerceService {
         })
       : null;
 
-    return new CommerceFullDto(commerce, userReview?.id);
+    // Load and overlay translations for the requested locale (zero AI at request time)
+    const base =
+      locale !== 'es'
+        ? this.translationResolver.overlay(
+            { ...commerce },
+            await this.translationResolver.load('commerce', commerce.id, locale),
+          )
+        : commerce;
+
+    return new CommerceFullDto(base as Commerce, userReview?.id);
   }
 
   // ------------------------------------------------------------------------------------------------

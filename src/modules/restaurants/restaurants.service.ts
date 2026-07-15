@@ -42,6 +42,7 @@ import {
   RestaurantDocsStatus,
 } from './utils/compute-restaurant-completion';
 import { deriveLowestHighest } from './utils/derive-price-ranges';
+import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 @Injectable()
 export class RestaurantsService {
@@ -67,6 +68,7 @@ export class RestaurantsService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly translationResolver: TranslationResolverService,
   ) {}
 
   async findAll({ filters }: RestaurantFindAllParams = {}) {
@@ -172,7 +174,7 @@ export class RestaurantsService {
   // ------------------------------------------------------------------------------------------------
   // Find all public restaurants
   // ------------------------------------------------------------------------------------------------
-  async findPublicRestaurants({ filters, user }: RestaurantFindAllParams = {}) {
+  async findPublicRestaurants({ filters, user, locale = 'es' }: RestaurantFindAllParams = {}) {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateRestaurantQueryFiltersAndSort(filters);
 
@@ -215,8 +217,18 @@ export class RestaurantsService {
       }),
     );
 
+    // Batch-load translations once for all restaurants (N+1 guard — zero AI at request time)
+    let translationsMap: Map<string, Record<string, string>> = new Map();
+    if (locale !== 'es' && sortedRestaurants.length) {
+      translationsMap = await this.translationResolver.batchLoad('restaurant', sortedRestaurants.map(r => r.id), locale);
+    }
+
     return restaurantsWithPromotions.map(({ restaurant, hasPromotions, latestPromotion, userReview }) => {
-      const dto = new RestaurantIndexDto({ data: restaurant, userReview: userReview?.id });
+      const base =
+        locale !== 'es'
+          ? this.translationResolver.overlay({ ...restaurant }, translationsMap.get(restaurant.id) ?? {})
+          : restaurant;
+      const dto = new RestaurantIndexDto({ data: base as Restaurant, userReview: userReview?.id });
       (dto as any).hasPromotions = hasPromotions;
       (dto as any).latestPromotionValue = latestPromotion?.value;
       return dto;
@@ -485,7 +497,7 @@ export class RestaurantsService {
   // ------------------------------------------------------------------------------------------------
   // Find one restaurant by slug
   // ------------------------------------------------------------------------------------------------
-  async findOneBySlug({ slug, user }: { slug: string; user?: User }) {
+  async findOneBySlug({ slug, user, locale = 'es' }: { slug: string; user?: User; locale?: string }) {
     const relations: FindOptionsRelations<Restaurant> = {
       categories: { icon: true },
       facilities: { icon: true },
@@ -521,7 +533,16 @@ export class RestaurantsService {
         : Promise.resolve(null),
     ]);
 
-    const dto = new RestaurantDto({ data: restaurant, userReview: userReview?.id });
+    // Load and overlay translations for the requested locale (zero AI at request time)
+    const base =
+      locale !== 'es'
+        ? this.translationResolver.overlay(
+            { ...restaurant },
+            await this.translationResolver.load('restaurant', restaurant.id, locale),
+          )
+        : restaurant;
+
+    const dto = new RestaurantDto({ data: base as Restaurant, userReview: userReview?.id });
     (dto as any).hasPromotions = hasPromotions;
     (dto as any).latestPromotionValue = latestPromotion?.value;
     (dto as any).activePromotions = activePromotions;

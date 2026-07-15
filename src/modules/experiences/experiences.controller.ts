@@ -36,6 +36,7 @@ import { ContentTypes } from '../common/constants';
 import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
 import { ExperienceVectorDto } from './dto/experience-vector.dto';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
+import { RequestLocale } from '../translations/request-locale.decorator';
 
 @Controller(SwaggerTags.Experiences)
 @ApiTags(SwaggerTags.Experiences)
@@ -81,12 +82,13 @@ export class ExperiencesController {
     @ExperienceFilters() filters: ExperienceFiltersDto,
     @GetUser() user: User | undefined,
     @Req() request: Request,
+    @RequestLocale() locale: string,
   ) {
     const tenantId = (request as any)[TENANT_ID_KEY];
     if (tenantId && !filters.townId) {
       filters.townId = tenantId;
     }
-    return this.experiencesService.findPublicExperiences({ filters, user });
+    return this.experiencesService.findPublicExperiences({ filters, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
@@ -118,8 +120,8 @@ export class ExperiencesController {
   @Get('slug/:slug')
   @OptionalAuth()
   @ApiOkResponse({ description: 'Experience Detail', type: CreateExperienceDto })
-  findOneBySlug(@Param('slug') slug: string, @GetUser() user?: User) {
-    return this.experiencesService.findOneBySlug({ slug, user });
+  findOneBySlug(@Param('slug') slug: string, @GetUser() user?: User, @RequestLocale() locale: string = 'es') {
+    return this.experiencesService.findOneBySlug({ slug, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------

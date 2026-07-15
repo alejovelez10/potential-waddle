@@ -47,6 +47,7 @@ import {
   ExperienceTermsStatus,
   ExperienceDocsStatus,
 } from './utils/compute-experience-completion';
+import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 @Injectable()
 export class ExperiencesService {
@@ -72,6 +73,7 @@ export class ExperiencesService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly translationResolver: TranslationResolverService,
   ) {}
 
   // ------------------------------------------------------------------------------------------------
@@ -180,7 +182,7 @@ export class ExperiencesService {
   // ------------------------------------------------------------------------------------------------
   // Find public experiences
   // ------------------------------------------------------------------------------------------------
-  async findPublicExperiences({ filters, user }: ExperienceFindAllParams = {}): Promise<ExperienceDto[]> {
+  async findPublicExperiences({ filters, user, locale = 'es' }: ExperienceFindAllParams = {}): Promise<ExperienceDto[]> {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateExperienceQueryFiltersAndSort(filters);
 
@@ -233,9 +235,19 @@ export class ExperiencesService {
       }),
     );
 
+    // Batch-load translations once for all experiences (N+1 guard — zero AI at request time)
+    let translationsMap: Map<string, Record<string, string>> = new Map();
+    if (locale !== 'es' && sortedExperiences.length) {
+      translationsMap = await this.translationResolver.batchLoad('experience', sortedExperiences.map(e => e.id), locale);
+    }
+
     return experiencesWithPromotions.map(({ experience, hasPromotions, latestPromotion }) => {
       const userReview = userReviews.find(r => r.experience?.id === experience.id);
-      const dto = new ExperienceIndexDto({ data: experience, userReview: userReview?.id });
+      const base =
+        locale !== 'es'
+          ? this.translationResolver.overlay({ ...experience }, translationsMap.get(experience.id) ?? {})
+          : experience;
+      const dto = new ExperienceIndexDto({ data: base as Experience, userReview: userReview?.id });
       (dto as any).hasPromotions = hasPromotions;
       (dto as any).latestPromotionValue = latestPromotion?.value;
       return dto;
@@ -312,7 +324,7 @@ export class ExperiencesService {
   // ------------------------------------------------------------------------------------------------
   // Find one lodging by slug
   // ------------------------------------------------------------------------------------------------
-  async findOneBySlug({ slug, user }: { slug: string; user?: User }) {
+  async findOneBySlug({ slug, user, locale = 'es' }: { slug: string; user?: User; locale?: string }) {
     const relations: FindOptionsRelations<Experience> = {
       categories: { icon: true },
       facilities: { icon: true },
@@ -344,7 +356,16 @@ export class ExperiencesService {
     const latestPromotion = await this.promotionsService.getLatestActivePromotion(experience.id, 'experience');
     const activePromotions = await this.promotionsService.getActivePromotions(experience.id, 'experience');
 
-    const dto = new ExperienceDto({ data: experience, userReview: userReview?.id });
+    // Load and overlay translations for the requested locale (zero AI at request time)
+    const base =
+      locale !== 'es'
+        ? this.translationResolver.overlay(
+            { ...experience },
+            await this.translationResolver.load('experience', experience.id, locale),
+          )
+        : experience;
+
+    const dto = new ExperienceDto({ data: base as Experience, userReview: userReview?.id });
     (dto as any).hasPromotions = hasPromotions;
     (dto as any).latestPromotionValue = latestPromotion?.value;
     (dto as any).activePromotions = activePromotions;

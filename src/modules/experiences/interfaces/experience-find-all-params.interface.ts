@@ -4,4 +4,5 @@ import type { ExperienceFiltersDto } from '../dto';
 export interface ExperienceFindAllParams {
   filters?: ExperienceFiltersDto;
   user?: User | null;
+  locale?: string;
 }

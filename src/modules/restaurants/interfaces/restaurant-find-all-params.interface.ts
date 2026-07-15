@@ -4,4 +4,5 @@ import type { RestaurantFiltersDto } from '../dto';
 export interface RestaurantFindAllParams {
   filters?: RestaurantFiltersDto;
   user?: User | null;
+  locale?: string;
 }
