@@ -201,7 +201,7 @@ export class TranslationSeedingService {
       // Pitfall 7: experience ownership is via guide.user.id, NOT experience.user.id
       const experience = await this.experienceRepo.findOne({
         where: { id: entityId },
-        relations: ['guide', 'guide.user'],
+        relations: { guide: { user: true } },
       });
       if (!experience || experience.guide?.user?.id !== userId) {
         throw new ForbiddenException('Not your experience');
@@ -217,6 +217,39 @@ export class TranslationSeedingService {
     if (!entity || entity.user?.id !== userId) {
       throw new ForbiddenException(`Not your ${entityType}`);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // getTranslationState — read helper for the owner panel (Phase 28.1 consumes this)
+  // Returns current EN translation state (field, value, source, updatedAt) for an entity.
+  // ---------------------------------------------------------------------------
+
+  async getTranslationState(
+    entityType: string,
+    entityId: string,
+  ): Promise<Array<{ field: string; value: string; source: string; updatedAt: Date }>> {
+    const rows = await this.repo.find({
+      where: { entityType, entityId, locale: 'en' },
+      select: ['field', 'value', 'source', 'updatedAt'],
+    });
+    return rows.map((r) => ({ field: r.field, value: r.value, source: r.source, updatedAt: r.updatedAt }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // seedOnDemand — POST on-demand seed: owner forces a re-seed of auto/empty fields.
+  // IDOR-guarded (ownership verified before seeding). Synchronous, single Gemini call.
+  // Acceptable because it is owner-initiated, not on the traveler read path (Pitfall 4).
+  // ---------------------------------------------------------------------------
+
+  async seedOnDemand(
+    entityType: string,
+    entityId: string,
+    entityName: string,
+    fieldsES: Record<string, string>,
+    userId: string,
+  ): Promise<void> {
+    await this.assertOwnership(entityType, entityId, userId);
+    await this.seedEntity(entityType, entityId, entityName, fieldsES);
   }
 
   // ---------------------------------------------------------------------------
