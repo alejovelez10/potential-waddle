@@ -6,11 +6,16 @@ const logger = new Logger('GeminiStructuredFallback');
 /**
  * Primary model for review-analysis generation.
  *
- * Review summaries are a low-frequency, high-value action, so we always use the most
- * powerful model for best quality. This is intentionally DECOUPLED from the GEMINI_MODEL
- * env var (which drives the high-frequency Rafa chatbot, kept on a cheaper model).
+ * Review summaries are a low-frequency, high-value action, so we use the strongest model
+ * available to the project. This is intentionally DECOUPLED from the GEMINI_MODEL env var
+ * (which drives the high-frequency Rafa chatbot, kept on a cheaper model).
+ *
+ * NOTE: gemini-2.5-pro / gemini-*-pro are NOT available on the binntu project key (they
+ * return 404 "not available to new users" — and a 404 is non-transient, so the fallback
+ * chain does NOT catch it). We use gemini-3.5-flash, the strongest model this key can call.
+ * If pro access is later granted on the project, restore 'gemini-2.5-pro' here.
  */
-export const REVIEW_ANALYSIS_PRIMARY_MODEL = 'gemini-2.5-pro';
+export const REVIEW_ANALYSIS_PRIMARY_MODEL = 'gemini-3.5-flash';
 
 /**
  * Graceful-degradation chain. If the primary model is overloaded (503) or rate-limited
@@ -19,10 +24,6 @@ export const REVIEW_ANALYSIS_PRIMARY_MODEL = 'gemini-2.5-pro';
  * Note: gemini-2.5-flash and gemini-2.5-flash-lite are NOT available on new API keys
  * (they 404 "not available to new users"). Use gemini-flash-latest / gemini-3.5-flash
  * which both return 200 on the binntu project key.
- *
- * Note: REVIEW_ANALYSIS_PRIMARY_MODEL (gemini-2.5-pro) requires billing to be enabled
- * on the project. Without billing it returns 429, but will degrade gracefully to this
- * fallback chain instead of failing outright.
  */
 const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash'];
 
