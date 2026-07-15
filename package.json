@@ -29,7 +29,8 @@
     "migration:generate": "ts-node ./src/scripts/generate-migration.ts",
     "migration:create": "ts-node ./src/scripts/create-migration.ts",
     "migration:revert": "npm run typeorm -- -d ./src/config/connection-source.ts migration:revert",
-    "backfill:whatsapp": "ts-node -r tsconfig-paths/register ./src/scripts/backfill-whatsapp-clicks.ts"
+    "backfill:whatsapp": "ts-node -r tsconfig-paths/register ./src/scripts/backfill-whatsapp-clicks.ts",
+    "backfill:translations": "ts-node -r tsconfig-paths/register ./src/scripts/backfill-translations.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.1",

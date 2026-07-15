@@ -157,7 +157,7 @@ async function upsertAuto(
   await ds.query(
     `INSERT INTO entity_translation
        (id, entity_type, entity_id, field, locale, value, source, source_hash, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, 'en', $4, 'auto', $5, NOW())
+     VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'en', $4, 'auto', $5, NOW())
      ON CONFLICT (entity_type, entity_id, field, locale) DO UPDATE
        SET value = EXCLUDED.value,
            source = 'auto',
@@ -185,7 +185,7 @@ async function getFieldsNeedingSeeding(
   const existing: { field: string; source_hash: string | null; source: string }[] = await ds.query(
     `SELECT field, source_hash, source
      FROM entity_translation
-     WHERE entity_type = $1 AND entity_id = $2 AND locale = 'en'`,
+     WHERE entity_type = $1 AND entity_id = $2::uuid AND locale = 'en'`,
     [entityType, entityId],
   );
 
@@ -257,7 +257,7 @@ async function computeParityReport(ds: DataSource): Promise<TranslationParityRep
            SELECT COUNT(DISTINCT field)
            FROM entity_translation
            WHERE entity_type = $1
-             AND entity_id = e.id::text
+             AND entity_id = e.id
              AND locale = 'en'
          ) >= $2`,
       [entityType, expectedFieldCount],
