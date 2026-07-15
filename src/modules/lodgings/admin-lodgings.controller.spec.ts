@@ -17,6 +17,8 @@ import { EntityReviewsService } from '../reviews/services/entity-reviews.service
 import { TermsService } from '../terms/services';
 import { DocumentService } from '../documents/services';
 import { ResendService } from '../email/services/resend.service';
+import { SubscriptionsService } from '../subscriptions/services';
+import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -157,6 +159,8 @@ async function buildModule() {
       { provide: DocumentService, useValue: { getEntityDocumentStatus: jest.fn().mockResolvedValue([]) } },
       { provide: DataSource, useValue: dataSource },
       { provide: ResendService, useValue: resendService },
+      { provide: SubscriptionsService, useValue: { getActiveSubscribedEntityIds: jest.fn().mockResolvedValue([]) } },
+      { provide: TranslationResolverService, useValue: { batchLoad: jest.fn(), load: jest.fn(), overlay: jest.fn((e: any, t: any) => ({ ...e, ...t })) } },
     ],
   }).compile();
 

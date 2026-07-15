@@ -24,6 +24,7 @@ import { User } from '../users/entities';
 
 import { LodgingsService } from './lodgings.service';
 import { LodgingFilters, LodgingListQueryParamsDocs } from './decorators';
+import { RequestLocale } from '../translations/request-locale.decorator';
 import {
   AdminLodgingsFiltersDto,
   AdminLodgingsListDto,
@@ -85,12 +86,13 @@ export class LodgingsController {
     @LodgingFilters() filters: LodgingFiltersDto,
     @GetUser() user: User | undefined,
     @Req() request: Request,
+    @RequestLocale() locale: string,
   ) {
     const tenantId = (request as any)[TENANT_ID_KEY];
     if (tenantId && !filters.townId) {
       filters.townId = tenantId;
     }
-    return this.lodgingsService.findPublicLodgings({ filters, user });
+    return this.lodgingsService.findPublicLodgings({ filters, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
@@ -98,12 +100,16 @@ export class LodgingsController {
   // * ----------------------------------------------------------------------------------------------------------------
   @Get('public/full-info')
   @ApiOkResponse({ description: 'Lodging List', type: [LodgingVectorDto] })
-  findPublicFullInfoLodgings(@LodgingFilters() filters: LodgingFiltersDto, @Req() request: Request) {
+  findPublicFullInfoLodgings(
+    @LodgingFilters() filters: LodgingFiltersDto,
+    @Req() request: Request,
+    @RequestLocale() locale: string,
+  ) {
     const tenantId = (request as any)[TENANT_ID_KEY];
     if (tenantId && !filters.townId) {
       filters.townId = tenantId;
     }
-    return this.lodgingsService.findPublicFullInfoLodgings({ filters });
+    return this.lodgingsService.findPublicFullInfoLodgings({ filters, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
@@ -122,8 +128,8 @@ export class LodgingsController {
   @Get('slug/:slug')
   @OptionalAuth()
   @ApiOkResponse({ description: 'Lodging Detail', type: LodgingFullDto })
-  findOneBySlug(@Param('slug') slug: string, @GetUser() user?: User) {
-    return this.lodgingsService.findOneBySlug({ slug, user });
+  findOneBySlug(@Param('slug') slug: string, @GetUser() user?: User, @RequestLocale() locale: string = 'es') {
+    return this.lodgingsService.findOneBySlug({ slug, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
