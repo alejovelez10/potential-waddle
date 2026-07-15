@@ -18,6 +18,7 @@ import { ReviewsModule } from '../reviews/reviews.module';
 import { TermsModule } from '../terms/terms.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { TranslationsModule } from '../translations/translations.module';
 
 @Module({
   controllers: [LodgingsController, LodgingRoomTypesController, AdminLodgingsController],
@@ -42,6 +43,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     TermsModule,
     DocumentsModule,
     SubscriptionsModule,
+    TranslationsModule,
   ],
   exports: [LodgingRoomTypesService],
 })

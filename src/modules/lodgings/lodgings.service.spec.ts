@@ -181,6 +181,8 @@ describe('LodgingsService — submitForReview', () => {
         { provide: DocumentService, useValue: { getEntityDocumentStatus: jest.fn().mockResolvedValue([]) } },
         { provide: DataSource, useValue: dataSource },
         { provide: ResendService, useValue: resendService },
+        { provide: SubscriptionsService, useValue: { getActiveSubscribedEntityIds: jest.fn().mockResolvedValue([]) } },
+        { provide: TranslationResolverService, useValue: { batchLoad: jest.fn(), load: jest.fn(), overlay: jest.fn((e: any, t: any) => ({ ...e, ...t })) } },
       ],
     }).compile();
 
@@ -446,7 +448,7 @@ describe('LodgingsService — findPublicLodgings (locale overlay)', () => {
 
     lodgingRepo.find.mockResolvedValueOnce([lodgingA, lodgingB]);
 
-    const translationsMap = new Map([
+    const translationsMap: Map<string, Record<string, string>> = new Map<string, Record<string, string>>([
       [LODGING_ID_A, { description: 'Description EN A', howToGetThere: 'How to get there EN A' }],
       [LODGING_ID_B, { description: 'Description EN B' }],
     ]);
@@ -529,6 +531,8 @@ describe('LodgingsService — create', () => {
           provide: ResendService,
           useValue: { sendBusinessWelcomeEmail: jest.fn().mockResolvedValue(true) },
         },
+        { provide: SubscriptionsService, useValue: { getActiveSubscribedEntityIds: jest.fn().mockResolvedValue([]) } },
+        { provide: TranslationResolverService, useValue: { batchLoad: jest.fn(), load: jest.fn(), overlay: jest.fn((e: any, t: any) => ({ ...e, ...t })) } },
       ],
     }).compile();
 

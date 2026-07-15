@@ -48,6 +48,7 @@ import { TermsTypeEnum } from '../terms/interfaces';
 import { isTermsEnforcementEnabled } from '../terms/utils';
 import { ResendService } from '../email/services/resend.service';
 import { SubscriptionsService } from '../subscriptions/services';
+import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 @Injectable()
 export class LodgingsService {
@@ -80,6 +81,7 @@ export class LodgingsService {
     private readonly dataSource: DataSource,
     private readonly resendService: ResendService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly translationResolver: TranslationResolverService,
   ) {}
 
   // ------------------------------------------------------------------------------------------------
@@ -200,7 +202,7 @@ export class LodgingsService {
   // ------------------------------------------------------------------------------------------------
   // Find all public lodgings
   // ------------------------------------------------------------------------------------------------
-  async findPublicLodgings({ filters, user }: LodgingFindAllParams = {}) {
+  async findPublicLodgings({ filters, user, locale = 'es' }: LodgingFindAllParams = {}) {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateLodgingQueryFilters(filters);
 
@@ -249,8 +251,19 @@ export class LodgingsService {
       }),
     );
 
+    // Batch-load translations once for all lodgings (N+1 guard — D-11 zero AI at request time)
+    let translationsMap: Map<string, Record<string, string>> = new Map();
+    if (locale !== 'es' && sortedLodgings.length) {
+      translationsMap = await this.translationResolver.batchLoad(
+        'lodging',
+        sortedLodgings.map(l => l.id),
+        locale,
+      );
+    }
+
     return lodgingsWithPromotions.map(({ lodging, hasPromotions, latestPromotion, userReview }) => {
-      const dto = new LodgingIndexDto(lodging, userReview?.id);
+      const base = locale !== 'es' ? this.translationResolver.overlay({ ...lodging }, translationsMap.get(lodging.id) ?? {}) : lodging;
+      const dto = new LodgingIndexDto(base as Lodging, userReview?.id);
       dto.hasPromotions = hasPromotions;
       dto.latestPromotionValue = latestPromotion?.value;
       return dto;
@@ -398,7 +411,7 @@ export class LodgingsService {
   // ------------------------------------------------------------------------------------------------
   // Find one lodging by slug
   // ------------------------------------------------------------------------------------------------
-  async findOneBySlug({ slug, user }: { slug: string; user?: User }) {
+  async findOneBySlug({ slug, user, locale = 'es' }: { slug: string; user?: User; locale?: string }) {
     const relations: FindOptionsRelations<Lodging> = {
       categories: { icon: true },
       facilities: { icon: true },
@@ -444,7 +457,16 @@ export class LodgingsService {
         : Promise.resolve(null),
     ]);
 
-    const dto = new LodgingFullDto(lodging, userReview?.id);
+    // Load and overlay translations for the requested locale (D-10, D-11 zero AI at request time)
+    const base =
+      locale !== 'es'
+        ? this.translationResolver.overlay(
+            { ...lodging },
+            await this.translationResolver.load('lodging', lodging.id, locale),
+          )
+        : lodging;
+
+    const dto = new LodgingFullDto(base as Lodging, userReview?.id);
     (dto as any).hasPromotions = hasPromotions;
     (dto as any).latestPromotionValue = latestPromotion?.value;
     (dto as any).activePromotions = activePromotions;
