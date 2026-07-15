@@ -42,6 +42,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { TermsModule } from './modules/terms/terms.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ForcedPublicModule } from './modules/forced-public/forced-public.module';
+import { TranslationsModule } from './modules/translations/translations.module';
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { ForcedPublicModule } from './modules/forced-public/forced-public.module
     TermsModule,
     NotificationsModule,
     ForcedPublicModule,
+    TranslationsModule,
   ],
   controllers: [],
   providers: [
