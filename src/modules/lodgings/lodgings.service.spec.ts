@@ -16,6 +16,8 @@ import { EntityReviewsService } from '../reviews/services/entity-reviews.service
 import { TermsService } from '../terms/services';
 import { DocumentService } from '../documents/services';
 import { ResendService } from '../email/services/resend.service';
+import { SubscriptionsService } from '../subscriptions/services';
+import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -364,6 +366,108 @@ describe('LodgingsService — submitForReview', () => {
     expect(result.status).toBe('pending_review');
 
     process.env.TERMS_ENFORCEMENT_ENABLED = originalEnv;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LodgingsService.findPublicLodgings — translation overlay tests (Plan 27-03)
+// ---------------------------------------------------------------------------
+describe('LodgingsService — findPublicLodgings (locale overlay)', () => {
+  let service: LodgingsService;
+  let lodgingRepo: ReturnType<typeof makeRepo>;
+  let translationResolver: jest.Mocked<Pick<TranslationResolverService, 'batchLoad' | 'load' | 'overlay'>>;
+  let subscriptionsService: jest.Mocked<Pick<SubscriptionsService, 'getActiveSubscribedEntityIds'>>;
+  let promotionsService: jest.Mocked<Pick<PromotionsService, 'hasActivePromotions' | 'getLatestActivePromotion'>>;
+
+  const LODGING_ID_A = '00000000-0000-0000-0000-000000000011';
+  const LODGING_ID_B = '00000000-0000-0000-0000-000000000012';
+
+  function makeLodgingWithId(id: string): Lodging {
+    return buildFullLodging({
+      id,
+      status: 'published',
+      isPublic: true,
+      description: 'Descripción en español',
+      howToGetThere: 'Cómo llegar en español',
+    });
+  }
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    lodgingRepo = makeRepo();
+    translationResolver = {
+      batchLoad: jest.fn(),
+      load: jest.fn(),
+      overlay: jest.fn().mockImplementation((entity, translations) => ({ ...entity, ...translations })),
+    };
+    subscriptionsService = {
+      getActiveSubscribedEntityIds: jest.fn().mockResolvedValue([LODGING_ID_A, LODGING_ID_B]),
+    };
+    promotionsService = {
+      hasActivePromotions: jest.fn().mockResolvedValue(false),
+      getLatestActivePromotion: jest.fn().mockResolvedValue(null),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LodgingsService,
+        { provide: getRepositoryToken(Lodging), useValue: lodgingRepo },
+        { provide: getRepositoryToken(LodgingImage), useValue: makeRepo() },
+        { provide: getRepositoryToken(Category), useValue: makeRepo() },
+        { provide: getRepositoryToken(User), useValue: makeRepo() },
+        { provide: getRepositoryToken(Town), useValue: makeRepo() },
+        { provide: getRepositoryToken(Facility), useValue: makeRepo() },
+        { provide: getRepositoryToken(Place), useValue: makeRepo() },
+        { provide: getRepositoryToken(LodgingPlace), useValue: makeRepo() },
+        { provide: getRepositoryToken(LodgingRoomType), useValue: makeRepo() },
+        {
+          provide: CloudinaryService,
+          useValue: { uploadImage: jest.fn(), destroyFile: jest.fn(), destroyFolder: jest.fn() },
+        },
+        { provide: GooglePlacesService, useValue: { getPlaceDetails: jest.fn() } },
+        { provide: PromotionsService, useValue: promotionsService },
+        { provide: EntityReviewsService, useValue: { getUserReviews: jest.fn().mockResolvedValue([]) } },
+        { provide: TermsService, useValue: { getStatusForUser: jest.fn(), getOwnersWithAcceptance: jest.fn() } },
+        { provide: DocumentService, useValue: { getEntityDocumentStatus: jest.fn().mockResolvedValue([]) } },
+        { provide: DataSource, useValue: { transaction: jest.fn() } },
+        { provide: ResendService, useValue: { sendLodgingSubmittedEmail: jest.fn(), sendAdminLodgingPendingNotification: jest.fn() } },
+        { provide: SubscriptionsService, useValue: subscriptionsService },
+        { provide: TranslationResolverService, useValue: translationResolver },
+      ],
+    }).compile();
+
+    service = module.get<LodgingsService>(LodgingsService);
+  });
+
+  it('locale=en calls batchLoad EXACTLY ONCE for a multi-lodging list (N+1 guard)', async () => {
+    const lodgingA = makeLodgingWithId(LODGING_ID_A);
+    const lodgingB = makeLodgingWithId(LODGING_ID_B);
+
+    lodgingRepo.find.mockResolvedValueOnce([lodgingA, lodgingB]);
+
+    const translationsMap = new Map([
+      [LODGING_ID_A, { description: 'Description EN A', howToGetThere: 'How to get there EN A' }],
+      [LODGING_ID_B, { description: 'Description EN B' }],
+    ]);
+    translationResolver.batchLoad.mockResolvedValueOnce(translationsMap);
+
+    await service.findPublicLodgings({ filters: {} as any, locale: 'en' });
+
+    // N+1 guard: exactly ONE batchLoad call regardless of number of lodgings
+    expect(translationResolver.batchLoad).toHaveBeenCalledTimes(1);
+    expect(translationResolver.batchLoad).toHaveBeenCalledWith('lodging', expect.arrayContaining([LODGING_ID_A, LODGING_ID_B]), 'en');
+  });
+
+  it('locale=es does NOT call batchLoad (es is canonical, short-circuit)', async () => {
+    const lodgingA = makeLodgingWithId(LODGING_ID_A);
+    const lodgingB = makeLodgingWithId(LODGING_ID_B);
+
+    lodgingRepo.find.mockResolvedValueOnce([lodgingA, lodgingB]);
+
+    await service.findPublicLodgings({ filters: {} as any, locale: 'es' });
+
+    expect(translationResolver.batchLoad).toHaveBeenCalledTimes(0);
   });
 });
 
