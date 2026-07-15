@@ -235,8 +235,6 @@ async function computeParityReport(ds: DataSource): Promise<TranslationParityRep
     const meta = ENTITY_META[entityType];
     if (!meta) continue;
 
-    const expectedFieldCount = (TRANSLATABLE_FIELDS_BY_ENTITY[entityType] ?? []).length;
-
     // Count entities that have at least one non-null translatable ES column
     const totalResult: { count: string }[] = await ds.query(
       `SELECT COUNT(*)::int AS count FROM "${meta.table}" WHERE ${Object.values(meta.fieldColumns)
@@ -245,8 +243,12 @@ async function computeParityReport(ds: DataSource): Promise<TranslationParityRep
     );
     const total = parseInt(String(totalResult[0]?.count ?? '0'), 10);
 
-    // Count entities that have ALL expected EN rows (one per translatable field)
-    // A row with source='revisado' counts as satisfied
+    // Count entities that have EN rows for ALL of their OWN non-empty ES fields.
+    // An entity with only 1 of 2 ES fields populated is fully-seeded when it has 1 EN row.
+    // A row with source='revisado' counts as satisfied (it is locale='en').
+    const nonEmptyEsCaseExprs = Object.values(meta.fieldColumns)
+      .map((col) => `(CASE WHEN e."${col}" IS NOT NULL AND e."${col}" != '' THEN 1 ELSE 0 END)`)
+      .join(' + ');
     const seededResult: { count: string }[] = await ds.query(
       `SELECT COUNT(*)::int AS count
        FROM "${meta.table}" e
@@ -259,8 +261,8 @@ async function computeParityReport(ds: DataSource): Promise<TranslationParityRep
            WHERE entity_type = $1
              AND entity_id = e.id
              AND locale = 'en'
-         ) >= $2`,
-      [entityType, expectedFieldCount],
+         ) >= (${nonEmptyEsCaseExprs})`,
+      [entityType],
     );
     const seeded = parseInt(String(seededResult[0]?.count ?? '0'), 10);
 
@@ -385,7 +387,7 @@ async function seedEntityType(
           prompt: buildTranslationPrompt(entityType, row['display_name'] ?? entityType, needsSeeding),
           responseSchema: buildTranslationSchema(fieldNames),
           temperature: 0.3,
-          maxOutputTokens: 2000,
+          maxOutputTokens: 8192,
         });
 
         const translations: Record<string, string> = JSON.parse(rawJson);

@@ -80,7 +80,7 @@ export class TranslationSeedingService {
       prompt: buildTranslationPrompt(entityType, entityName, subset),
       responseSchema: buildTranslationSchema(fieldNames),
       temperature: 0.3, // low temperature = faithful, not creative
-      maxOutputTokens: 2000,
+      maxOutputTokens: 8192,
     });
 
     const translations: Record<string, string> = JSON.parse(rawJson);
