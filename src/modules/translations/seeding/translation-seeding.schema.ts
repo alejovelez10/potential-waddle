@@ -10,9 +10,9 @@ import { Schema, SchemaType } from '@google/generative-ai';
  * Pattern: identical to structuredReviewAnalysisSchema but for plain-text translation fields.
  */
 export function buildTranslationSchema(fieldNames: string[]): Schema {
-  const properties: Record<string, { type: SchemaType }> = {};
+  const properties: { [k: string]: Schema } = {};
   for (const field of fieldNames) {
-    properties[field] = { type: SchemaType.STRING };
+    properties[field] = { type: SchemaType.STRING } as Schema;
   }
   return {
     type: SchemaType.OBJECT,
