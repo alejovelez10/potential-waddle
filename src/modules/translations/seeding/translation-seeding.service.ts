@@ -76,7 +76,7 @@ export class TranslationSeedingService {
     // Single Gemini call for ALL fields (MT-01, Pitfall 2 analogous cost guard)
     const rawJson = await generateStructuredAnalysis({
       apiKey: appConfig().gemini.apiKey,
-      primaryModel: 'gemini-2.5-flash', // translation: flash suffices; pro is overkill here
+      primaryModel: 'gemini-3.1-flash-lite', // translation: flash-lite suffices; supports new binntu project key
       prompt: buildTranslationPrompt(entityType, entityName, subset),
       responseSchema: buildTranslationSchema(fieldNames),
       temperature: 0.3, // low temperature = faithful, not creative

@@ -15,8 +15,16 @@ export const REVIEW_ANALYSIS_PRIMARY_MODEL = 'gemini-2.5-pro';
 /**
  * Graceful-degradation chain. If the primary model is overloaded (503) or rate-limited
  * (429), fall back to a still-capable model so the user gets a result instead of an error.
+ *
+ * Note: gemini-2.5-flash and gemini-2.5-flash-lite are NOT available on new API keys
+ * (they 404 "not available to new users"). Use gemini-flash-latest / gemini-3.5-flash
+ * which both return 200 on the binntu project key.
+ *
+ * Note: REVIEW_ANALYSIS_PRIMARY_MODEL (gemini-2.5-pro) requires billing to be enabled
+ * on the project. Without billing it returns 429, but will degrade gracefully to this
+ * fallback chain instead of failing outright.
  */
-const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash'];
 
 /** HTTP status codes that warrant a retry / model escalation. */
 const TRANSIENT_STATUS = [429, 500, 502, 503, 504];

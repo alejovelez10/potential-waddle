@@ -383,7 +383,7 @@ async function seedEntityType(
         const fieldNames = Object.keys(needsSeeding);
         const rawJson = await generateStructuredAnalysis({
           apiKey: appConfig().gemini.apiKey,
-          primaryModel: 'gemini-2.5-flash',
+          primaryModel: 'gemini-3.1-flash-lite',
           prompt: buildTranslationPrompt(entityType, row['display_name'] ?? entityType, needsSeeding),
           responseSchema: buildTranslationSchema(fieldNames),
           temperature: 0.3,

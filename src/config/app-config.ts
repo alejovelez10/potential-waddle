@@ -181,7 +181,7 @@ export const appConfig = (): EnvironmentVariables => ({
   },
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || '',
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
+    model: process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
   },
   kmizen: {
     apiKey: process.env.KMIZEN_API_KEY || '',

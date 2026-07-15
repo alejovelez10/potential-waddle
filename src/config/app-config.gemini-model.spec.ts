@@ -12,10 +12,10 @@ describe('appConfig() — gemini.model', () => {
     }
   });
 
-  it('should return gemini-2.5-flash-lite as default when GEMINI_MODEL is not set', () => {
+  it('should return gemini-3.1-flash-lite as default when GEMINI_MODEL is not set', () => {
     delete process.env.GEMINI_MODEL;
     const config = appConfig();
-    expect(config.gemini.model).toBe('gemini-2.5-flash-lite');
+    expect(config.gemini.model).toBe('gemini-3.1-flash-lite');
   });
 
   it('should return the value of GEMINI_MODEL when it is set', () => {
