@@ -40,6 +40,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { GetUser } from '../common/decorators';
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
+import { RequestLocale } from '../translations/request-locale.decorator';
 
 @Controller('guides')
 @ApiTags(SwaggerTags.Guides)
@@ -94,12 +95,13 @@ export class GuidesController {
     @GuidesFilters() filters: GuidesFiltersDto,
     @GetUser() user: User | undefined,
     @Req() request: Request,
+    @RequestLocale() locale: string,
   ) {
     const tenantId = (request as any)[TENANT_ID_KEY];
     if (tenantId && !filters.townId) {
       filters.townId = tenantId;
     }
-    return this.guidesService.findPublicGuides({ filters, user });
+    return this.guidesService.findPublicGuides({ filters, user, locale });
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
@@ -130,8 +132,8 @@ export class GuidesController {
   @Get('public/:id')
   @OptionalAuth()
   @ApiOkResponse({ description: 'Guide Detail', type: GuideDto })
-  findOneById(@Param('id') id: string, @GetUser() user?: User) {
-    return this.guidesService.findOneById(id, user);
+  findOneById(@Param('id') id: string, @GetUser() user?: User, @RequestLocale() locale: string = 'es') {
+    return this.guidesService.findOneById(id, user, locale);
   }
 
   // * ----------------------------------------------------------------------------------------------------------------

@@ -27,11 +27,16 @@ import {
   AdminCategoriesListDto,
 } from '../dto/categories';
 import { ContentTypes } from 'src/modules/common/constants';
+import { RequestLocale } from '../../translations/request-locale.decorator';
+import { TranslationResolverService } from '../../translations/translation-resolver.service';
 
 @Controller('categories')
 @ApiTags(SwaggerTags.Categories)
 export class CategoriesController {
-  constructor(private readonly categoriesService: CategoriesService) {}
+  constructor(
+    private readonly categoriesService: CategoriesService,
+    private readonly translationResolver: TranslationResolverService,
+  ) {}
   // * -------------------------------------------------------------------------------------------------------------
   // * CREATE NEW CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
@@ -68,12 +73,18 @@ export class CategoriesController {
     type: [PublicCategoryDto],
     description: 'Returns a list of categories',
   })
-  findAll(
+  async findAll(
     @Query('model', new ParseEnumPipe(ModelsEnum, { optional: true })) model?: ModelsEnum,
     @Query('only-enabled', new ParseBoolPipe({ optional: true })) onlyEnabled?: boolean,
     @Query('only-asigned', new ParseBoolPipe({ optional: true })) onlyAsigned?: boolean,
+    @RequestLocale() locale: string = 'es',
   ) {
-    return this.categoriesService.findAll({ model, onlyEnabled, onlyAsigned });
+    const categories = await this.categoriesService.findAll({ model, onlyEnabled, onlyAsigned });
+    if (locale === 'es' || !categories.length) return categories;
+    const translationsMap = await this.translationResolver.batchLoad('category', categories.map(c => c.id), locale);
+    return categories.map(cat =>
+      this.translationResolver.overlay({ ...cat }, translationsMap.get(cat.id) ?? {}),
+    );
   }
   // * -------------------------------------------------------------------------------------------------------------
   // * GET ALL CATEGORIES (FULL)

@@ -19,6 +19,7 @@ import { CloudinaryPresets } from 'src/config';
 import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
 import { Town } from '../towns/entities/town.entity';
 import { PlaceVectorDto } from './dto/place-vector.dto';
+import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 @Injectable()
 export class PlacesService {
@@ -41,6 +42,7 @@ export class PlacesService {
     private readonly cloudinaryService: CloudinaryService,
 
     private readonly placeReviewService: PlaceReviewsService,
+    private readonly translationResolver: TranslationResolverService,
   ) {}
 
   async create(createPlaceDto: CreatePlaceDto) {
@@ -148,7 +150,7 @@ export class PlacesService {
   // ------------------------------------------------------------------------------------------------
   // Find all public places
   // ------------------------------------------------------------------------------------------------
-  async findPublicPlaces(filters: PlaceFiltersDto = {}, user: User | null = null) {
+  async findPublicPlaces(filters: PlaceFiltersDto = {}, user: User | null = null, locale = 'es') {
     /*     const shouldRandomize = filters?.sortBy === 'random';
      */ const { where, order } = generatePlaceQueryFilters(filters);
     const relations: FindOptionsRelations<Place> = {
@@ -175,9 +177,20 @@ export class PlacesService {
       filteredPlaces = filteredPlaces.sort(() => Math.random() - 0.5);
     }
  */
+
+    // Batch-load translations once for all places (N+1 guard — zero AI at request time)
+    let translationsMap: Map<string, Record<string, string>> = new Map();
+    if (locale !== 'es' && filteredPlaces.length) {
+      translationsMap = await this.translationResolver.batchLoad('place', filteredPlaces.map(p => p.id), locale);
+    }
+
     return filteredPlaces.map(place => {
       const review = reviews.find(r => r.place.id === place.id);
-      return new PlaceDto(place, review?.id);
+      const base =
+        locale !== 'es'
+          ? this.translationResolver.overlay({ ...place }, translationsMap.get(place.id) ?? {})
+          : place;
+      return new PlaceDto(base as Place, review?.id);
     });
   }
 
@@ -208,7 +221,7 @@ export class PlacesService {
   // ------------------------------------------------------------------------------------------------
   // Find one place
   // ------------------------------------------------------------------------------------------------
-  async findOne(identifier: string, user: User | null = null) {
+  async findOne(identifier: string, user: User | null = null, locale = 'es') {
     const relations: FindOptionsRelations<Place> = {
       categories: { icon: true },
       facilities: true,
@@ -225,7 +238,17 @@ export class PlacesService {
     if (!place) throw new NotFoundException('Place not found');
 
     const review = user ? await this.placeReviewService.findUserReview({ userId: user.id, placeId: place.id }) : null;
-    return new PlaceDetailDto({ place, reviewId: review?.id });
+
+    // Load and overlay translations for the requested locale (zero AI at request time)
+    const base =
+      locale !== 'es'
+        ? this.translationResolver.overlay(
+            { ...place },
+            await this.translationResolver.load('place', place.id, locale),
+          )
+        : place;
+
+    return new PlaceDetailDto({ place: base as Place, reviewId: review?.id });
   }
 
   // ------------------------------------------------------------------------------------------------

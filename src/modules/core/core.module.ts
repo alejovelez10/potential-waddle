@@ -20,6 +20,7 @@ import {
   AppConfigController,
 } from './controllers';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { TranslationsModule } from '../translations/translations.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
       EntityBadge,
     ]),
     CloudinaryModule,
+    TranslationsModule,
   ],
   controllers: [
     ModelsController,

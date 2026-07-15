@@ -38,6 +38,7 @@ import {
   GuideTermsStatus,
   GuideDocsStatus,
 } from './utils/compute-guide-completion';
+import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 @Injectable()
 export class GuidesService {
@@ -59,6 +60,7 @@ export class GuidesService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly translationResolver: TranslationResolverService,
   ) {}
 
   // ------------------------------------------------------------------------------------------------
@@ -197,7 +199,7 @@ export class GuidesService {
     return result;
   }
 
-  async findPublicGuides({ filters, user }: GuideFindAllParams = {}) {
+  async findPublicGuides({ filters, user, locale = 'es' }: GuideFindAllParams = {}) {
     const shouldRandomize = filters?.sortBy === 'random';
     const { page = 1, limit = 25 } = filters ?? {};
     const skip = (page - 1) * limit;
@@ -247,13 +249,23 @@ export class GuidesService {
       }
     }
 
+    // Batch-load translations once for all guides (N+1 guard — zero AI at request time)
+    let translationsMap: Map<string, Record<string, string>> = new Map();
+    if (locale !== 'es' && guides.length) {
+      translationsMap = await this.translationResolver.batchLoad('guide', guides.map(g => g.id), locale);
+    }
+
     return {
       currentPage: page,
       pages: Math.ceil(count / limit),
       count,
       data: guides.map(guide => {
         const userReview = userReviews.find(r => r.guide?.id === guide.id);
-        return new GuideDto({ data: guide, userReview: userReview?.id });
+        const base =
+          locale !== 'es'
+            ? this.translationResolver.overlay({ ...guide }, translationsMap.get(guide.id) ?? {})
+            : guide;
+        return new GuideDto({ data: base as Guide, userReview: userReview?.id });
       }),
     };
   }
@@ -337,7 +349,7 @@ export class GuidesService {
     return dto;
   }
 
-  async findOneById(id: string, user?: User) {
+  async findOneById(id: string, user?: User, locale = 'es') {
     const relations: FindOptionsRelations<Guide> = {
       categories: { icon: true },
       user: true,
@@ -367,7 +379,16 @@ export class GuidesService {
         })
       : null;
 
-    return new GuideDto({ data: guide, userReview: userReview?.id });
+    // Load and overlay translations for the requested locale (zero AI at request time)
+    const base =
+      locale !== 'es'
+        ? this.translationResolver.overlay(
+            { ...guide },
+            await this.translationResolver.load('guide', guide.id, locale),
+          )
+        : guide;
+
+    return new GuideDto({ data: base as Guide, userReview: userReview?.id });
   }
 
   // ------------------------------------------------------------------------------------------------

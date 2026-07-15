@@ -43,6 +43,7 @@ import { ContentTypes } from '../common/constants';
 import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
 import { PlaceVectorDto } from './dto/place-vector.dto';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
+import { RequestLocale } from '../translations/request-locale.decorator';
 
 @Controller('places')
 @ApiTags(SwaggerTags.Places)
@@ -99,12 +100,17 @@ export class PlacesController {
   @Get('public')
   @OptionalAuth()
   @ApiOkResponse({ description: 'Place List', type: [PlaceDto] })
-  findPublicPlaces(@PlaceFilters() filters: PlaceFiltersDto, @GetUser() user: User | null, @Req() request: Request) {
+  findPublicPlaces(
+    @PlaceFilters() filters: PlaceFiltersDto,
+    @GetUser() user: User | null,
+    @Req() request: Request,
+    @RequestLocale() locale: string,
+  ) {
     const tenantId = (request as any)[TENANT_ID_KEY];
     if (tenantId && !filters.townId) {
       filters.townId = tenantId;
     }
-    return this.placesService.findPublicPlaces(filters, user);
+    return this.placesService.findPublicPlaces(filters, user, locale);
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
@@ -132,8 +138,8 @@ export class PlacesController {
   @OptionalAuth()
   @ApiParam({ name: 'id', type: 'string', description: 'The UUID of the place or slug' })
   @ApiOkResponse({ description: 'The place has been successfully retrieved.', type: PlaceDetailDto })
-  findOne(@Param('id') id: string, @GetUser() user: User | null) {
-    return this.placesService.findOne(id, user);
+  findOne(@Param('id') id: string, @GetUser() user: User | null, @RequestLocale() locale: string = 'es') {
+    return this.placesService.findOne(id, user, locale);
   }
 
   // * ----------------------------------------------------------------------------------------------------------------

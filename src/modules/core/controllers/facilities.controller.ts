@@ -5,11 +5,16 @@ import { Auth } from 'src/modules/auth/decorators';
 import { CreateFacilityDto, UpdateFacilityDto, AdminFacilitiesFiltersDto } from '../dto';
 import { FacilitiesService } from '../services';
 import { ModelsEnum } from '../enums';
+import { RequestLocale } from '../../translations/request-locale.decorator';
+import { TranslationResolverService } from '../../translations/translation-resolver.service';
 
 @Controller('facilities')
 @ApiTags(SwaggerTags.Facilities)
 export class FacilitiesController {
-  constructor(private readonly facilitiesService: FacilitiesService) {}
+  constructor(
+    private readonly facilitiesService: FacilitiesService,
+    private readonly translationResolver: TranslationResolverService,
+  ) {}
 
   // * -------------------------------------------------------------------------------------------------------------
   // * GET ALL FACILITIES PAGINATED (ADMIN)
@@ -44,11 +49,17 @@ export class FacilitiesController {
     description:
       'Retrieves the categories assigned to the model. This parameter takes precedence over the slug parameter.',
   })
-  findAll(
+  async findAll(
     @Query('slug') slug?: string,
     @Query('inner-join', new ParseEnumPipe(ModelsEnum, { optional: true })) innerJoin?: ModelsEnum,
+    @RequestLocale() locale: string = 'es',
   ) {
-    return this.facilitiesService.findAll({ slug, innerJoin });
+    const facilities = await this.facilitiesService.findAll({ slug, innerJoin });
+    if (locale === 'es' || !facilities.length) return facilities;
+    const translationsMap = await this.translationResolver.batchLoad('facility', facilities.map(f => f.id), locale);
+    return facilities.map(fac =>
+      this.translationResolver.overlay({ ...fac }, translationsMap.get(fac.id) ?? {}),
+    );
   }
 
   @Get('full')
