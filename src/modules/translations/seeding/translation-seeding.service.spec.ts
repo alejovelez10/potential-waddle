@@ -3,7 +3,7 @@
 // so that 28-02/28-03 executors have a green-bar target and cannot silently regress.
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getRepositoryToken, getDataSourceToken } from '@nestjs/typeorm';
 import { ForbiddenException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { EntityTranslation } from '../entities/entity-translation.entity';
@@ -31,6 +31,10 @@ const mockExperienceRepo = () => ({
   findOne: jest.fn(),
 });
 
+const mockDataSource = () => ({
+  query: jest.fn().mockResolvedValue([]),
+});
+
 // ---------------------------------------------------------------------------
 // Helper: compute expected sourceHash for an ES text (mirrors computeSourceHash)
 // ---------------------------------------------------------------------------
@@ -47,6 +51,7 @@ describe('TranslationSeedingService', () => {
   let translationRepo: ReturnType<typeof mockTranslationRepo>;
   let lodgingRepo: ReturnType<typeof mockLodgingRepo>;
   let experienceRepo: ReturnType<typeof mockExperienceRepo>;
+  let dataSource: ReturnType<typeof mockDataSource>;
 
   const ENTITY_ID = 'entity-uuid-001';
 
@@ -57,6 +62,11 @@ describe('TranslationSeedingService', () => {
         {
           provide: getRepositoryToken(EntityTranslation),
           useFactory: mockTranslationRepo,
+        },
+        // DataSource injected via @InjectDataSource() — used by sweepPending/loadEntityES
+        {
+          provide: getDataSourceToken(),
+          useFactory: mockDataSource,
         },
         // Lodging repo injection token (service injects by entity class or string token)
         {
@@ -73,6 +83,7 @@ describe('TranslationSeedingService', () => {
 
     service = module.get<TranslationSeedingService>(TranslationSeedingService);
     translationRepo = module.get(getRepositoryToken(EntityTranslation));
+    dataSource = module.get(getDataSourceToken());
     lodgingRepo = module.get('LodgingRepository');
     experienceRepo = module.get('ExperienceRepository');
   });
@@ -301,6 +312,106 @@ describe('TranslationSeedingService', () => {
         );
         expect(hasRevisado).toBe(true);
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // MT-03 / D-08 — sweepPending actually calls seedEntity (gap-closure fix)
+  // -------------------------------------------------------------------------
+
+  describe('sweepPending', () => {
+    it('D-08: calls seedEntity for a pending lodging entity found in entity_translation', async () => {
+      const PENDING_ID = 'pending-lodging-uuid';
+      const ES_DESCRIPTION = 'Una descripción en español.';
+
+      // 1. repo.query (entity_translation) returns one pending entity_id for 'lodging'
+      //    and empty arrays for all other entity types
+      (translationRepo.query as jest.Mock).mockImplementation(
+        (sql: string, params: unknown[]) => {
+          // The pending-entities subquery passes entityType as $1
+          if (typeof sql === 'string' && sql.includes('entity_translation') && params?.[0] === 'lodging') {
+            return Promise.resolve([{ entity_id: PENDING_ID }]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+
+      // 2. dataSource.query (base entity SELECT) returns ES source values for that lodging
+      (dataSource.query as jest.Mock).mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: ES_DESCRIPTION, howToGetThere: null },
+      ]);
+
+      // 3. Gemini mock — return fake translation
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(
+        JSON.stringify({ description: 'A test cabin description.' }),
+      );
+
+      const seedEntitySpy = jest.spyOn(service, 'seedEntity');
+
+      await service.sweepPending({ batchSize: 5 });
+
+      // seedEntity MUST have been called with the pending entity's data
+      expect(seedEntitySpy).toHaveBeenCalledWith(
+        'lodging',
+        PENDING_ID,
+        'Cabaña Test',
+        expect.objectContaining({ description: ES_DESCRIPTION }),
+      );
+    });
+
+    it('D-08: does NOT call seedEntity when base entity has no ES source data', async () => {
+      const PENDING_ID = 'ghost-lodging-uuid';
+
+      // entity_translation query returns a pending entity
+      (translationRepo.query as jest.Mock).mockImplementation(
+        (sql: string, params: unknown[]) => {
+          if (typeof sql === 'string' && sql.includes('entity_translation') && params?.[0] === 'lodging') {
+            return Promise.resolve([{ entity_id: PENDING_ID }]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+
+      // dataSource.query returns no row (entity deleted or all ES fields empty)
+      (dataSource.query as jest.Mock).mockResolvedValueOnce([]);
+
+      const seedEntitySpy = jest.spyOn(service, 'seedEntity');
+
+      await service.sweepPending({ batchSize: 5 });
+
+      // seedEntity must NOT be called — nothing to seed
+      expect(seedEntitySpy).not.toHaveBeenCalled();
+    });
+
+    it('Pitfall 2: sweepPending respects batchSize — stops after budget is exhausted', async () => {
+      // Two pending lodging entities, but batchSize=1 — only one should be processed
+      (translationRepo.query as jest.Mock).mockImplementation(
+        (sql: string, params: unknown[]) => {
+          if (typeof sql === 'string' && sql.includes('entity_translation') && params?.[0] === 'lodging') {
+            return Promise.resolve([
+              { entity_id: 'lodging-a' },
+              { entity_id: 'lodging-b' },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+
+      // dataSource.query returns ES data for the first entity
+      (dataSource.query as jest.Mock).mockResolvedValue([
+        { display_name: 'Cabaña A', description: 'Descripción A.', howToGetThere: null },
+      ]);
+
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValue(
+        JSON.stringify({ description: 'Description A.' }),
+      );
+
+      const seedEntitySpy = jest.spyOn(service, 'seedEntity');
+
+      await service.sweepPending({ batchSize: 1 });
+
+      // Only one entity processed — batchSize enforced
+      expect(seedEntitySpy).toHaveBeenCalledTimes(1);
     });
   });
 });

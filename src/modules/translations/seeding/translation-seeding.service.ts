@@ -1,12 +1,13 @@
 import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { createHash } from 'crypto';
 
 import { appConfig } from 'src/config/app-config';
 import { generateStructuredAnalysis } from 'src/modules/ai/lib/gemini/generate-structured-with-fallback';
 import { EntityTranslation } from '../entities/entity-translation.entity';
 import { TRANSLATABLE_FIELDS_BY_ENTITY } from './translatable-fields.constant';
+import { ENTITY_SOURCE_META } from './entity-source-meta.constant';
 import { buildTranslationPrompt, buildTranslationSchema } from './translation-seeding.schema';
 
 @Injectable()
@@ -16,6 +17,11 @@ export class TranslationSeedingService {
   constructor(
     @InjectRepository(EntityTranslation)
     private readonly repo: Repository<EntityTranslation>,
+
+    // Injected for sweepPending: SELECT-only raw queries against base entity tables
+    // to load ES source values without importing feature modules.
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
 
     // String-token injections so that TranslationsModule does not need to import
     // LodgingsModule / ExperiencesModule (circular-dep risk). 28-03 wires these tokens
@@ -253,18 +259,55 @@ export class TranslationSeedingService {
   }
 
   // ---------------------------------------------------------------------------
+  // loadEntityES — SELECT-only helper: fetches ES source values for a single
+  // entity from its base table. Reads ONLY; no writes/updates/deletes to base tables.
+  // Returns { displayName, fieldsES } or null if entity not found.
+  // ---------------------------------------------------------------------------
+
+  private async loadEntityES(
+    entityType: string,
+    entityId: string,
+  ): Promise<{ displayName: string; fieldsES: Record<string, string> } | null> {
+    const meta = ENTITY_SOURCE_META[entityType];
+    if (!meta) return null;
+
+    const fieldEntries = Object.entries(meta.fieldColumns);
+    const selectCols = [
+      `(${meta.displayNameSql})::text AS display_name`,
+      ...fieldEntries.map(([camel, sql]) => `"${sql}" AS "${camel}"`),
+    ];
+
+    const rows: Record<string, string | null>[] = await this.dataSource.query(
+      `SELECT ${selectCols.join(', ')} FROM "${meta.table}" WHERE id = $1::uuid LIMIT 1`,
+      [entityId],
+    );
+
+    if (!rows.length) return null;
+
+    const row = rows[0];
+    const displayName = row['display_name'] ?? entityType;
+    const fieldsES: Record<string, string> = {};
+
+    for (const [camel] of fieldEntries) {
+      const val = row[camel];
+      if (val != null && val !== '') {
+        fieldsES[camel] = val;
+      }
+    }
+
+    return { displayName, fieldsES };
+  }
+
+  // ---------------------------------------------------------------------------
   // sweepPending — Pitfall 2: bounded batch; processes at most batchSize entities
   //
-  // Implementation: iterates each entity type with translatable fields, queries for
-  // entities whose EN translations are missing or stale (via needsSeeding), and seeds
-  // them up to the remaining batch budget. Wraps each seed in try/catch so one failure
-  // doesn't abort the whole sweep.
+  // For each entity type with translatable fields:
+  //   1. Find entity IDs that have NO 'en' row at all (via entity_translation subquery).
+  //   2. Load the ES source values from the base entity table (SELECT-only).
+  //   3. Call seedEntity to generate and upsert EN translations via Gemini.
   //
-  // NOTE: For this plan the sweep uses the translation repo to find entity IDs that
-  // LACK an 'en' row entirely (via a subquery) rather than joining entity tables.
-  // This keeps TranslationsModule independent of all entity repos. Entities that have
-  // stale (hash-mismatch) rows but not missing rows will be picked up on the next
-  // dedicated reseed pass (future plan) or on-demand via the override endpoint.
+  // Revisado-skip is guaranteed by the upsert WHERE source != 'revisado' inside seedEntity.
+  // Each entity is wrapped in try/catch so one failure does not abort the sweep.
   // ---------------------------------------------------------------------------
 
   async sweepPending(opts: { batchSize: number }): Promise<void> {
@@ -278,15 +321,21 @@ export class TranslationSeedingService {
     for (const entityType of entityTypes) {
       if (remaining <= 0) break;
 
+      // Skip entity types with no source meta (cannot load ES values)
+      if (!ENTITY_SOURCE_META[entityType]) {
+        this.logger.warn(`(translation-sweep) No ENTITY_SOURCE_META for entityType=${entityType} — skipping`);
+        continue;
+      }
+
       try {
         // Find entity IDs of this type that have NO 'en' rows at all.
-        // Using a raw query against entity_translation itself (no cross-module dep).
+        // Pure SELECT against entity_translation — no cross-module dependency.
         const rows: { entity_id: string }[] = await this.repo.query(
-          `SELECT DISTINCT entity_id
-           FROM entity_translation
-           WHERE entity_type = $1
-             AND locale != 'en'
-             AND entity_id NOT IN (
+          `SELECT DISTINCT et.entity_id
+           FROM entity_translation et
+           WHERE et.entity_type = $1
+             AND et.locale != 'en'
+             AND et.entity_id NOT IN (
                SELECT entity_id FROM entity_translation
                WHERE entity_type = $1 AND locale = 'en'
              )
@@ -297,14 +346,29 @@ export class TranslationSeedingService {
         for (const row of rows) {
           if (remaining <= 0) break;
           try {
-            // needsSeeding requires fieldsES — in the sweep we don't have them here.
-            // sweepPending logs the entity as pending; actual seeding is triggered by
-            // the backfill script or on-demand POST seed endpoint (28-03).
-            // For cron use: this marks awareness that entity_id needs seeding.
-            this.logger.log(`(translation-sweep) entity_type=${entityType} entity_id=${row.entity_id} pending seeding`);
+            // Load ES source values from the base entity table (SELECT-only)
+            const entityData = await this.loadEntityES(entityType, row.entity_id);
+
+            if (!entityData || !Object.keys(entityData.fieldsES).length) {
+              this.logger.warn(
+                `(translation-sweep) No ES source data for ${entityType}/${row.entity_id} — skipping`,
+              );
+              remaining--;
+              continue;
+            }
+
+            this.logger.log(
+              `(translation-sweep) Seeding ${entityType}/${row.entity_id} fields: ${Object.keys(entityData.fieldsES).join(', ')}`,
+            );
+
+            // Call seedEntity — this calls Gemini and upserts EN rows.
+            // The upsert SQL inside seedEntity guards revisado rows (WHERE source != 'revisado').
+            await this.seedEntity(entityType, row.entity_id, entityData.displayName, entityData.fieldsES);
+
             remaining--;
           } catch (err) {
-            this.logger.error(`(translation-sweep) Failed to process ${entityType}/${row.entity_id}`, err);
+            this.logger.error(`(translation-sweep) Failed to seed ${entityType}/${row.entity_id}`, err);
+            remaining--;
           }
         }
       } catch (err) {
