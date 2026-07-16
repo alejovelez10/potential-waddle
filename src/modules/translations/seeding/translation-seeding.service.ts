@@ -166,12 +166,14 @@ export class TranslationSeedingService {
     entityId: string,
     fields: Record<string, string>,
     userId: string,
-  ): Promise<void> {
+  ): Promise<Array<{ field: string; value: string; source: string; updatedAt: Date }>> {
     await this.assertOwnership(entityType, entityId, userId);
 
     for (const [field, value] of Object.entries(fields)) {
       await this.upsertRevisadoRow(entityType, entityId, field, value);
     }
+
+    return this.getTranslationState(entityType, entityId);
   }
 
   /**
@@ -250,12 +252,14 @@ export class TranslationSeedingService {
   async seedOnDemand(
     entityType: string,
     entityId: string,
-    entityName: string,
-    fieldsES: Record<string, string>,
     userId: string,
-  ): Promise<void> {
+  ): Promise<Array<{ field: string; value: string; source: string; updatedAt: Date }>> {
     await this.assertOwnership(entityType, entityId, userId);
-    await this.seedEntity(entityType, entityId, entityName, fieldsES);
+    const loaded = await this.loadEntityES(entityType, entityId);
+    if (loaded) {
+      await this.seedEntity(entityType, entityId, loaded.displayName, loaded.fieldsES);
+    }
+    return this.getTranslationState(entityType, entityId);
   }
 
   // ---------------------------------------------------------------------------

@@ -53,7 +53,7 @@ export class TranslationsController {
   // ---------------------------------------------------------------------------
   // POST /translations/entities/:entityType/:entityId/seed
   // On-demand seed of auto/empty fields for an owned entity (synchronous, one Gemini call).
-  // Body: { entityName: string, fieldsES: Record<string, string> }
+  // No body required — the server loads ES source values from the base entity table.
   // IDOR-guarded in TranslationSeedingService.seedOnDemand (T-28-04).
   // ---------------------------------------------------------------------------
   @Post('entities/:entityType/:entityId/seed')
@@ -61,10 +61,8 @@ export class TranslationsController {
   seed(
     @Param('entityType') entityType: string,
     @Param('entityId') entityId: string,
-    @Body('entityName') entityName: string,
-    @Body('fieldsES') fieldsES: Record<string, string>,
     @GetUser() user: User,
   ) {
-    return this.seedingService.seedOnDemand(entityType, entityId, entityName ?? '', fieldsES ?? {}, user.id);
+    return this.seedingService.seedOnDemand(entityType, entityId, user.id);
   }
 }

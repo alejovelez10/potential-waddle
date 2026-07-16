@@ -260,8 +260,12 @@ describe('TranslationSeedingService', () => {
 
       it('resolves and upserts with source=revisado when userId matches lodging owner', async () => {
         lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+        translationRepo.find.mockResolvedValueOnce([]);
 
-        await service.overrideTranslation('lodging', ENTITY_ID, { description: 'Custom EN desc' }, 'userA');
+        const result = await service.overrideTranslation('lodging', ENTITY_ID, { description: 'Custom EN desc' }, 'userA');
+
+        // Returns the status array (new contract)
+        expect(Array.isArray(result)).toBe(true);
 
         // At least one query call must mark the row as 'revisado'
         const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
@@ -292,6 +296,7 @@ describe('TranslationSeedingService', () => {
           id: ENTITY_ID,
           guide: { user: { id: 'userA' } },
         });
+        translationRepo.find.mockResolvedValueOnce([]);
 
         await expect(
           service.overrideTranslation('experience', ENTITY_ID, { description: 'Custom EN' }, 'userA'),
@@ -303,8 +308,12 @@ describe('TranslationSeedingService', () => {
           id: ENTITY_ID,
           guide: { user: { id: 'userA' } },
         });
+        translationRepo.find.mockResolvedValueOnce([]);
 
-        await service.overrideTranslation('experience', ENTITY_ID, { description: 'Custom EN' }, 'userA');
+        const result = await service.overrideTranslation('experience', ENTITY_ID, { description: 'Custom EN' }, 'userA');
+
+        // Returns the status array (new contract)
+        expect(Array.isArray(result)).toBe(true);
 
         const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
         const hasRevisado = queryCalls.some(([_sql, params]: [string, unknown[]]) =>
@@ -312,6 +321,61 @@ describe('TranslationSeedingService', () => {
         );
         expect(hasRevisado).toBe(true);
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // seedOnDemand — self-loads ES, IDOR-guarded, returns status array
+  // -------------------------------------------------------------------------
+
+  describe('seedOnDemand', () => {
+    it('throws ForbiddenException when userId does not own the entity', async () => {
+      lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+
+      await expect(
+        service.seedOnDemand('lodging', ENTITY_ID, 'userB'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('loads ES from base table, seeds, and returns status array', async () => {
+      lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+
+      // loadEntityES result via dataSource
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción en español.' },
+      ]);
+
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(
+        JSON.stringify({ description: 'Test cabin description.' }),
+      );
+
+      // getTranslationState result via repo.find
+      translationRepo.find.mockResolvedValueOnce([
+        { field: 'description', value: 'Test cabin description.', source: 'auto', updatedAt: new Date() },
+      ]);
+
+      const result = await service.seedOnDemand('lodging', ENTITY_ID, 'userA');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0]).toHaveProperty('field');
+      expect(result[0]).toHaveProperty('source');
+    });
+
+    it('returns status array even when loadEntityES finds no data', async () => {
+      lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+
+      // loadEntityES returns no rows
+      dataSource.query.mockResolvedValueOnce([]);
+
+      // getTranslationState — no rows yet
+      translationRepo.find.mockResolvedValueOnce([]);
+
+      const result = await service.seedOnDemand('lodging', ENTITY_ID, 'userA');
+
+      expect(Array.isArray(result)).toBe(true);
+      // seedEntity must NOT have been called (nothing to seed)
+      expect(generateStructuredAnalysis).not.toHaveBeenCalled();
     });
   });
 
