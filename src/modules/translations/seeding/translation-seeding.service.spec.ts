@@ -396,6 +396,125 @@ describe('TranslationSeedingService', () => {
       // seedEntity must NOT have been called (nothing to seed)
       expect(generateStructuredAnalysis).not.toHaveBeenCalled();
     });
+
+    // -----------------------------------------------------------------------
+    // Per-field FORCE path — opts.fields bypasses the revisado guard
+    // -----------------------------------------------------------------------
+
+    it('force path: re-translates a revisado field when opts.fields is provided', async () => {
+      // Owner owns the lodging
+      lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+
+      // loadEntityES returns ES text for 'description'
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción forzada en español.' },
+      ]);
+
+      // Gemini returns a fresh EN translation for the requested field
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(
+        JSON.stringify({ description: 'Forced EN description.' }),
+      );
+
+      // getTranslationState: EN rows (existing revisado row)
+      translationRepo.find.mockResolvedValueOnce([
+        {
+          field: 'description',
+          value: 'Old revisado EN text.',
+          source: 'revisado',
+          sourceHash: null,
+          updatedAt: new Date(),
+        },
+      ]);
+      // getTranslationState: loadEntityES
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción forzada en español.' },
+      ]);
+
+      await service.seedOnDemand('lodging', ENTITY_ID, 'userA', { fields: ['description'] });
+
+      // upsertForceAuto must have been called — the SQL must NOT have the revisado guard
+      const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
+      // At least one upsert call must have been made
+      expect(queryCalls.length).toBeGreaterThan(0);
+      // The force upsert must NOT contain the revisado WHERE guard
+      const forceCall = queryCalls.find(([sql]: [string]) =>
+        typeof sql === 'string' &&
+        sql.includes('ON CONFLICT') &&
+        !sql.includes("source != 'revisado'"),
+      );
+      expect(forceCall).toBeDefined();
+      // The EN value passed must be the new AI translation, not the old revisado text
+      const hasNewValue = queryCalls.some(([_sql, params]: [string, unknown[]]) =>
+        Array.isArray(params) && params.includes('Forced EN description.'),
+      );
+      expect(hasNewValue).toBe(true);
+    });
+
+    it('force path: only translates requested fields — other fields are untouched', async () => {
+      // Owner owns the lodging
+      lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+
+      // loadEntityES returns two fields but we only request 'description'
+      dataSource.query.mockResolvedValueOnce([
+        {
+          display_name: 'Cabaña Test',
+          description: 'Descripción en español.',
+          howToGetThere: 'Toma la carretera principal.',
+        },
+      ]);
+
+      // Gemini is called only for 'description'
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(
+        JSON.stringify({ description: 'Forced description EN.' }),
+      );
+
+      // getTranslationState
+      translationRepo.find.mockResolvedValueOnce([]);
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción en español.', howToGetThere: 'Toma la carretera principal.' },
+      ]);
+
+      await service.seedOnDemand('lodging', ENTITY_ID, 'userA', { fields: ['description'] });
+
+      // Gemini was called exactly once
+      expect(generateStructuredAnalysis).toHaveBeenCalledTimes(1);
+
+      // No upsert should include 'howToGetThere' as a bound param
+      const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
+      const hasHowToGetThere = queryCalls.some(([_sql, params]: [string, unknown[]]) =>
+        Array.isArray(params) && params.includes('howToGetThere'),
+      );
+      expect(hasHowToGetThere).toBe(false);
+    });
+
+    it('bulk path (no opts.fields): bulk upsert still applies revisado guard — revisado rows are skipped', async () => {
+      lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+
+      // loadEntityES
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción en español.' },
+      ]);
+
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(
+        JSON.stringify({ description: 'Auto EN description.' }),
+      );
+
+      // getTranslationState
+      translationRepo.find.mockResolvedValueOnce([]);
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción en español.' },
+      ]);
+
+      // Call WITHOUT opts.fields → bulk path
+      await service.seedOnDemand('lodging', ENTITY_ID, 'userA');
+
+      // Every upsert SQL in the bulk path must contain the revisado guard
+      const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
+      expect(queryCalls.length).toBeGreaterThan(0);
+      for (const [sql] of queryCalls) {
+        expect(sql as string).toContain("source != 'revisado'");
+      }
+    });
   });
 
   // -------------------------------------------------------------------------

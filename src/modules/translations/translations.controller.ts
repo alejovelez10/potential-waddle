@@ -53,7 +53,12 @@ export class TranslationsController {
   // ---------------------------------------------------------------------------
   // POST /translations/entities/:entityType/:entityId/seed
   // On-demand seed of auto/empty fields for an owned entity (synchronous, one Gemini call).
-  // No body required — the server loads ES source values from the base entity table.
+  //
+  // Optional body: { fields: string[] }
+  //   When `fields` is present → per-field FORCE path: only those fields are translated,
+  //   and the revisado guard is bypassed for them (owner explicitly requested it).
+  //   When `fields` is absent → bulk path: seeds auto/empty fields only (existing behaviour).
+  //
   // IDOR-guarded in TranslationSeedingService.seedOnDemand (T-28-04).
   // ---------------------------------------------------------------------------
   @Post('entities/:entityType/:entityId/seed')
@@ -61,8 +66,9 @@ export class TranslationsController {
   seed(
     @Param('entityType') entityType: string,
     @Param('entityId') entityId: string,
+    @Body('fields') fields: string[] | undefined,
     @GetUser() user: User,
   ) {
-    return this.seedingService.seedOnDemand(entityType, entityId, user.id);
+    return this.seedingService.seedOnDemand(entityType, entityId, user.id, { fields });
   }
 }

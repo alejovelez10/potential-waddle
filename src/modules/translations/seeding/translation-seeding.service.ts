@@ -279,22 +279,99 @@ export class TranslationSeedingService {
   }
 
   // ---------------------------------------------------------------------------
-  // seedOnDemand — POST on-demand seed: owner forces a re-seed of auto/empty fields.
+  // seedOnDemand — POST on-demand seed: owner forces a re-seed of auto/empty fields,
+  // OR force-translates a specific field list (bypassing the revisado guard).
   // IDOR-guarded (ownership verified before seeding). Synchronous, single Gemini call.
   // Acceptable because it is owner-initiated, not on the traveler read path (Pitfall 4).
+  //
+  // opts.fields (per-field FORCE path):
+  //   When present, ONLY the requested fields are translated. For each requested field
+  //   with non-empty ES source, a single Gemini call is made and the result is upserted
+  //   via upsertForceAuto — which bypasses the WHERE source != 'revisado' guard.
+  //   This is the ONLY place the revisado guard is bypassed, and ONLY for fields the
+  //   owner explicitly requested. The bulk path and the cron are unchanged.
+  //
+  // opts.fields absent (bulk path):
+  //   Falls through to the existing needsSeeding → seedEntity logic (no revisado bypass).
   // ---------------------------------------------------------------------------
 
   async seedOnDemand(
     entityType: string,
     entityId: string,
     userId: string,
+    opts?: { fields?: string[] },
   ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
     await this.assertOwnership(entityType, entityId, userId);
     const loaded = await this.loadEntityES(entityType, entityId);
-    if (loaded) {
-      await this.seedEntity(entityType, entityId, loaded.displayName, loaded.fieldsES);
+    const esValues = loaded?.fieldsES ?? {};
+
+    if (opts?.fields?.length) {
+      // PER-FIELD FORCE path: translate only the requested fields, bypassing revisado guard.
+      const subset: Record<string, string> = {};
+      for (const field of opts.fields) {
+        const esText = esValues[field];
+        if (esText != null && esText !== '') {
+          subset[field] = esText;
+        }
+      }
+
+      if (Object.keys(subset).length > 0) {
+        const fieldNames = Object.keys(subset);
+        const rawJson = await generateStructuredAnalysis({
+          apiKey: appConfig().gemini.apiKey,
+          primaryModel: 'gemini-3.1-flash-lite',
+          prompt: buildTranslationPrompt(entityType, loaded?.displayName ?? entityType, subset),
+          responseSchema: buildTranslationSchema(fieldNames),
+          temperature: 0.3,
+          maxOutputTokens: 8192,
+        });
+
+        const translations: Record<string, string> = JSON.parse(rawJson);
+
+        for (const field of fieldNames) {
+          const en = translations[field];
+          if (en == null) continue;
+          await this.upsertForceAuto(entityType, entityId, field, en, this.computeSourceHash(subset[field]));
+        }
+      }
+    } else {
+      // BULK path: skip revisado and already-fresh fields (existing behaviour unchanged).
+      if (loaded) {
+        await this.seedEntity(entityType, entityId, loaded.displayName, loaded.fieldsES);
+      }
     }
+
     return this.getTranslationState(entityType, entityId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // upsertForceAuto — owner-initiated FORCE upsert that bypasses the revisado guard.
+  //
+  // Identical to upsertTranslation EXCEPT the ON CONFLICT DO UPDATE has no
+  // WHERE source != 'revisado' condition — this is intentional and the ONLY
+  // place that revisado rows may be overwritten (only via an explicit per-field
+  // owner request through seedOnDemand's force path).
+  // Sets source back to 'auto' so the row re-enters the normal review cycle.
+  // ---------------------------------------------------------------------------
+
+  private async upsertForceAuto(
+    entityType: string,
+    entityId: string,
+    field: string,
+    value: string,
+    sourceHashES: string,
+  ): Promise<void> {
+    await this.repo.query(
+      `INSERT INTO entity_translation
+         (id, entity_type, entity_id, field, locale, value, source, source_hash, updated_at)
+       VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'en', $4, 'auto', $5, NOW())
+       ON CONFLICT (entity_type, entity_id, field, locale) DO UPDATE
+         SET value = EXCLUDED.value,
+             source = 'auto',
+             source_hash = EXCLUDED.source_hash,
+             updated_at = NOW()`,
+      [entityType, entityId, field, value, sourceHashES],
+    );
   }
 
   // ---------------------------------------------------------------------------
