@@ -169,8 +169,17 @@ export class TranslationSeedingService {
   ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
     await this.assertOwnership(entityType, entityId, userId);
 
+    // Load the current ES source values so each revisado row stores the hash of the
+    // ES it was based on. Without this the row's source_hash stays NULL and the field
+    // is reported as stale immediately after saving (badge 'revisar' instead of
+    // 'revisado'). A field only becomes 'revisar' once the ES actually changes later.
+    const loaded = await this.loadEntityES(entityType, entityId);
+    const esValues = loaded?.fieldsES ?? {};
+
     for (const [field, value] of Object.entries(fields)) {
-      await this.upsertRevisadoRow(entityType, entityId, field, value);
+      const es = esValues[field];
+      const sourceHash = es != null && es !== '' ? this.computeSourceHash(es) : null;
+      await this.upsertRevisadoRow(entityType, entityId, field, value, sourceHash);
     }
 
     return this.getTranslationState(entityType, entityId);
@@ -186,17 +195,18 @@ export class TranslationSeedingService {
     entityId: string,
     field: string,
     value: string,
+    sourceHash: string | null,
   ): Promise<void> {
     await this.repo.query(
       `INSERT INTO entity_translation
          (id, entity_type, entity_id, field, locale, value, source, source_hash, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, 'en', $4, $5, NULL, NOW())
+       VALUES (gen_random_uuid(), $1, $2, $3, 'en', $4, $5, $6, NOW())
        ON CONFLICT (entity_type, entity_id, field, locale) DO UPDATE
          SET value = EXCLUDED.value,
              source = $5,
-             source_hash = NULL,
+             source_hash = $6,
              updated_at = NOW()`,
-      [entityType, entityId, field, value, 'revisado'],
+      [entityType, entityId, field, value, 'revisado', sourceHash],
     );
   }
 
