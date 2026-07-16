@@ -260,12 +260,16 @@ describe('TranslationSeedingService', () => {
 
       it('resolves and upserts with source=revisado when userId matches lodging owner', async () => {
         lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+        // getTranslationState: repo.find for EN rows, then dataSource.query for ES values
         translationRepo.find.mockResolvedValueOnce([]);
+        dataSource.query.mockResolvedValueOnce([]);
 
         const result = await service.overrideTranslation('lodging', ENTITY_ID, { description: 'Custom EN desc' }, 'userA');
 
-        // Returns the status array (new contract)
-        expect(Array.isArray(result)).toBe(true);
+        // Returns the new { fields: {...} } contract, not an array
+        expect(result).toHaveProperty('fields');
+        expect(typeof result.fields).toBe('object');
+        expect(Array.isArray(result)).toBe(false);
 
         // At least one query call must mark the row as 'revisado'
         const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
@@ -297,6 +301,7 @@ describe('TranslationSeedingService', () => {
           guide: { user: { id: 'userA' } },
         });
         translationRepo.find.mockResolvedValueOnce([]);
+        dataSource.query.mockResolvedValueOnce([]);
 
         await expect(
           service.overrideTranslation('experience', ENTITY_ID, { description: 'Custom EN' }, 'userA'),
@@ -309,11 +314,14 @@ describe('TranslationSeedingService', () => {
           guide: { user: { id: 'userA' } },
         });
         translationRepo.find.mockResolvedValueOnce([]);
+        dataSource.query.mockResolvedValueOnce([]);
 
         const result = await service.overrideTranslation('experience', ENTITY_ID, { description: 'Custom EN' }, 'userA');
 
-        // Returns the status array (new contract)
-        expect(Array.isArray(result)).toBe(true);
+        // Returns the new { fields: {...} } contract, not an array
+        expect(result).toHaveProperty('fields');
+        expect(typeof result.fields).toBe('object');
+        expect(Array.isArray(result)).toBe(false);
 
         const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
         const hasRevisado = queryCalls.some(([_sql, params]: [string, unknown[]]) =>
@@ -337,10 +345,10 @@ describe('TranslationSeedingService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('loads ES from base table, seeds, and returns status array', async () => {
+    it('loads ES from base table, seeds, and returns { fields } object', async () => {
       lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
 
-      // loadEntityES result via dataSource
+      // loadEntityES (called by seedOnDemand before seedEntity)
       dataSource.query.mockResolvedValueOnce([
         { display_name: 'Cabaña Test', description: 'Descripción en español.' },
       ]);
@@ -349,33 +357,181 @@ describe('TranslationSeedingService', () => {
         JSON.stringify({ description: 'Test cabin description.' }),
       );
 
-      // getTranslationState result via repo.find
+      // getTranslationState: repo.find for EN rows
       translationRepo.find.mockResolvedValueOnce([
-        { field: 'description', value: 'Test cabin description.', source: 'auto', updatedAt: new Date() },
+        { field: 'description', value: 'Test cabin description.', source: 'auto', sourceHash: sha256('Descripción en español.'), updatedAt: new Date() },
+      ]);
+      // getTranslationState: loadEntityES (dataSource.query) for ES values
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción en español.' },
       ]);
 
       const result = await service.seedOnDemand('lodging', ENTITY_ID, 'userA');
 
-      expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBeGreaterThan(0);
-      expect(result[0]).toHaveProperty('field');
-      expect(result[0]).toHaveProperty('source');
+      // New contract: { fields: Record<string, {...}> }
+      expect(result).toHaveProperty('fields');
+      expect(typeof result.fields).toBe('object');
+      expect(Array.isArray(result)).toBe(false);
+      expect(result.fields).toHaveProperty('description');
+      expect(result.fields['description']).toHaveProperty('source');
     });
 
-    it('returns status array even when loadEntityES finds no data', async () => {
+    it('returns { fields } object even when loadEntityES finds no data', async () => {
       lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
 
-      // loadEntityES returns no rows
+      // loadEntityES for seedOnDemand — no entity rows
       dataSource.query.mockResolvedValueOnce([]);
 
-      // getTranslationState — no rows yet
+      // getTranslationState: repo.find — no EN rows yet
       translationRepo.find.mockResolvedValueOnce([]);
+      // getTranslationState: loadEntityES — also empty
+      dataSource.query.mockResolvedValueOnce([]);
 
       const result = await service.seedOnDemand('lodging', ENTITY_ID, 'userA');
 
-      expect(Array.isArray(result)).toBe(true);
+      // New contract: { fields: Record<string, {...}> }
+      expect(result).toHaveProperty('fields');
+      expect(typeof result.fields).toBe('object');
+      expect(Array.isArray(result)).toBe(false);
       // seedEntity must NOT have been called (nothing to seed)
       expect(generateStructuredAnalysis).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getTranslationState — shape contract (Phase 28.1 fix)
+  // -------------------------------------------------------------------------
+
+  describe('getTranslationState', () => {
+    it('returns an object with a "fields" property (not an array)', async () => {
+      translationRepo.find.mockResolvedValueOnce([]);
+      dataSource.query.mockResolvedValueOnce([]);
+
+      const result = await service.getTranslationState('lodging', ENTITY_ID);
+
+      expect(result).toHaveProperty('fields');
+      expect(typeof result.fields).toBe('object');
+      expect(Array.isArray(result)).toBe(false);
+    });
+
+    it('unseeded translatable field appears with value: null and source: "auto"', async () => {
+      // No EN rows stored for this entity
+      translationRepo.find.mockResolvedValueOnce([]);
+      // loadEntityES returns ES values (entity exists)
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción en español.' },
+      ]);
+
+      const result = await service.getTranslationState('lodging', ENTITY_ID);
+
+      // 'description' is in TRANSLATABLE_FIELDS_BY_ENTITY['lodging'] but has no EN row
+      expect(result.fields).toHaveProperty('description');
+      expect(result.fields['description'].value).toBeNull();
+      expect(result.fields['description'].source).toBe('auto');
+      expect(result.fields['description'].sourceStale).toBe(false);
+      expect(result.fields['description'].updatedAt).toBeNull();
+    });
+
+    it('field with stored sourceHash differing from sha256(current ES) has sourceStale: true', async () => {
+      const currentES = 'Descripción actualizada en español.';
+      const staleHash = sha256('Descripción vieja en español.'); // hash of OLD value
+
+      translationRepo.find.mockResolvedValueOnce([
+        {
+          field: 'description',
+          value: 'Old EN description.',
+          source: 'auto',
+          sourceHash: staleHash,
+          updatedAt: new Date('2025-01-01T00:00:00Z'),
+        },
+      ]);
+      // loadEntityES returns current ES value
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: currentES },
+      ]);
+
+      const result = await service.getTranslationState('lodging', ENTITY_ID);
+
+      expect(result.fields['description'].sourceStale).toBe(true);
+    });
+
+    it('field with stored sourceHash matching sha256(current ES) has sourceStale: false', async () => {
+      const currentES = 'Descripción sin cambios.';
+      const freshHash = sha256(currentES);
+
+      translationRepo.find.mockResolvedValueOnce([
+        {
+          field: 'description',
+          value: 'EN description unchanged.',
+          source: 'auto',
+          sourceHash: freshHash,
+          updatedAt: new Date('2025-06-01T12:00:00Z'),
+        },
+      ]);
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: currentES },
+      ]);
+
+      const result = await service.getTranslationState('lodging', ENTITY_ID);
+
+      expect(result.fields['description'].sourceStale).toBe(false);
+    });
+
+    it('updatedAt is a string (ISO) or null, never a Date object', async () => {
+      const seededDate = new Date('2025-03-15T10:30:00Z');
+
+      translationRepo.find.mockResolvedValueOnce([
+        {
+          field: 'description',
+          value: 'Some EN text.',
+          source: 'auto',
+          sourceHash: sha256('Texto ES.'),
+          updatedAt: seededDate,
+        },
+      ]);
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Test', description: 'Texto ES.' },
+      ]);
+
+      const result = await service.getTranslationState('lodging', ENTITY_ID);
+
+      const { updatedAt } = result.fields['description'];
+      // Must be a string (ISO 8601), not a Date instance
+      expect(typeof updatedAt).toBe('string');
+      expect(updatedAt).toBe(seededDate.toISOString());
+    });
+
+    it('unseeded field has updatedAt: null', async () => {
+      translationRepo.find.mockResolvedValueOnce([]);
+      dataSource.query.mockResolvedValueOnce([]);
+
+      const result = await service.getTranslationState('lodging', ENTITY_ID);
+
+      // All lodging translatable fields are unseeded → updatedAt must be null
+      for (const entry of Object.values(result.fields)) {
+        expect(entry.updatedAt).toBeNull();
+      }
+    });
+
+    it('includes EN-row fields not in TRANSLATABLE_FIELDS_BY_ENTITY (e.g. manual name override)', async () => {
+      // 'name' is NOT in TRANSLATABLE_FIELDS_BY_ENTITY['lodging'] but an owner may have overridden it
+      translationRepo.find.mockResolvedValueOnce([
+        {
+          field: 'name',
+          value: 'The Cabin EN',
+          source: 'revisado',
+          sourceHash: null,
+          updatedAt: new Date('2025-05-01T00:00:00Z'),
+        },
+      ]);
+      dataSource.query.mockResolvedValueOnce([]);
+
+      const result = await service.getTranslationState('lodging', ENTITY_ID);
+
+      // 'name' must appear because it has an EN row, even though it's not auto-translatable
+      expect(result.fields).toHaveProperty('name');
+      expect(result.fields['name'].source).toBe('revisado');
+      expect(result.fields['name'].value).toBe('The Cabin EN');
     });
   });
 

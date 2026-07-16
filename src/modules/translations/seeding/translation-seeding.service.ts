@@ -166,7 +166,7 @@ export class TranslationSeedingService {
     entityId: string,
     fields: Record<string, string>,
     userId: string,
-  ): Promise<Array<{ field: string; value: string; source: string; updatedAt: Date }>> {
+  ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
     await this.assertOwnership(entityType, entityId, userId);
 
     for (const [field, value] of Object.entries(fields)) {
@@ -229,18 +229,53 @@ export class TranslationSeedingService {
 
   // ---------------------------------------------------------------------------
   // getTranslationState — read helper for the owner panel (Phase 28.1 consumes this)
-  // Returns current EN translation state (field, value, source, updatedAt) for an entity.
+  // Returns { fields: Record<field, { source, value, sourceStale, updatedAt }> }
+  // matching the frontend ApiEntityTranslations contract exactly.
+  //
+  // Field set = UNION of:
+  //   - TRANSLATABLE_FIELDS_BY_ENTITY[entityType] (auto-translatable; appear as null when unseeded)
+  //   - Fields present in EN rows (covers manual-override-only fields like name/title)
+  //
+  // sourceStale = true when the stored EN row's sourceHash no longer matches sha256(current ES value).
+  // updatedAt is serialized as ISO string (or null when the field has never been seeded).
+  // ES base-table access is SELECT-only via loadEntityES.
   // ---------------------------------------------------------------------------
 
   async getTranslationState(
     entityType: string,
     entityId: string,
-  ): Promise<Array<{ field: string; value: string; source: string; updatedAt: Date }>> {
-    const rows = await this.repo.find({
+  ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
+    // 1. Load all EN rows for this entity (need sourceHash for staleness)
+    const enRows = await this.repo.find({
       where: { entityType, entityId, locale: 'en' },
-      select: ['field', 'value', 'source', 'updatedAt'],
     });
-    return rows.map((r) => ({ field: r.field, value: r.value, source: r.source, updatedAt: r.updatedAt }));
+
+    // 2. Load current ES source values (SELECT-only; never writes to base tables)
+    const loaded = await this.loadEntityES(entityType, entityId);
+    const esValues: Record<string, string> = loaded?.fieldsES ?? {};
+
+    // 3. Build the union of auto-translatable field names and field names with EN rows
+    const translatableFields: string[] = TRANSLATABLE_FIELDS_BY_ENTITY[entityType] ?? [];
+    const enRowFields: string[] = enRows.map((r) => r.field);
+    const allFields = Array.from(new Set([...translatableFields, ...enRowFields]));
+
+    // 4. Build the fields record
+    const fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> = {};
+
+    for (const field of allFields) {
+      const row = enRows.find((r) => r.field === field);
+      const value = row?.value ?? null;
+      const source = (row?.source as 'auto' | 'revisado') ?? 'auto';
+      const updatedAt = row?.updatedAt ? row.updatedAt.toISOString() : null;
+      // sourceStale: true when the row exists, the current ES value is known,
+      // and the stored sourceHash no longer matches the current ES hash.
+      const sourceStale =
+        !!row && esValues[field] != null && row.sourceHash !== this.computeSourceHash(esValues[field]);
+
+      fields[field] = { source, value, sourceStale, updatedAt };
+    }
+
+    return { fields };
   }
 
   // ---------------------------------------------------------------------------
@@ -253,7 +288,7 @@ export class TranslationSeedingService {
     entityType: string,
     entityId: string,
     userId: string,
-  ): Promise<Array<{ field: string; value: string; source: string; updatedAt: Date }>> {
+  ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
     await this.assertOwnership(entityType, entityId, userId);
     const loaded = await this.loadEntityES(entityType, entityId);
     if (loaded) {
