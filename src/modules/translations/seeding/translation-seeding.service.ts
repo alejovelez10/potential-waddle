@@ -1,6 +1,6 @@
-import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { createHash } from 'crypto';
 
 import { appConfig } from 'src/config/app-config';
@@ -58,16 +58,22 @@ export class TranslationSeedingService {
   }
 
   // ---------------------------------------------------------------------------
-  // seedEntity — MT-01: ONE Gemini call per entity, upserts all EN rows
+  // translateAndUpsert — the ONE place Gemini is called from inside this service
+  // (quick 260717-abz refactor, DD-4). ONE Gemini call for ALL requested fields,
+  // then one upsert per field.
+  //   opts.force=false (default) → upsertTranslation (guarded: WHERE source != 'revisado')
+  //   opts.force=true            → upsertForceAuto (bypasses the revisado guard —
+  //                                 ONLY for explicit per-field owner/admin force requests)
+  // No-op (no Gemini call) when subset is empty.
   // ---------------------------------------------------------------------------
 
-  async seedEntity(
+  private async translateAndUpsert(
     entityType: string,
     entityId: string,
-    entityName: string,
-    fieldsES: Record<string, string>,
+    displayName: string,
+    subset: Record<string, string>,
+    opts?: { force?: boolean },
   ): Promise<void> {
-    const subset = this.translatableSubset(entityType, fieldsES);
     const fieldNames = Object.keys(subset);
 
     // e.g. transport has no translatable fields — skip cleanly
@@ -77,7 +83,7 @@ export class TranslationSeedingService {
     const rawJson = await generateStructuredAnalysis({
       apiKey: appConfig().gemini.apiKey,
       primaryModel: 'gemini-3.1-flash-lite', // translation: flash-lite suffices; supports new binntu project key
-      prompt: buildTranslationPrompt(entityType, entityName, subset),
+      prompt: buildTranslationPrompt(entityType, displayName, subset),
       responseSchema: buildTranslationSchema(fieldNames),
       temperature: 0.3, // low temperature = faithful, not creative
       maxOutputTokens: 8192,
@@ -88,8 +94,27 @@ export class TranslationSeedingService {
     for (const field of fieldNames) {
       const en = translations[field];
       if (en == null) continue;
-      await this.upsertTranslation(entityType, entityId, field, en, this.computeSourceHash(subset[field]));
+      const sourceHash = this.computeSourceHash(subset[field]);
+      if (opts?.force) {
+        await this.upsertForceAuto(entityType, entityId, field, en, sourceHash);
+      } else {
+        await this.upsertTranslation(entityType, entityId, field, en, sourceHash);
+      }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // seedEntity — MT-01: ONE Gemini call per entity, upserts all EN rows
+  // ---------------------------------------------------------------------------
+
+  async seedEntity(
+    entityType: string,
+    entityId: string,
+    entityName: string,
+    fieldsES: Record<string, string>,
+  ): Promise<void> {
+    const subset = this.translatableSubset(entityType, fieldsES);
+    await this.translateAndUpsert(entityType, entityId, entityName, subset, { force: false });
   }
 
   // ---------------------------------------------------------------------------
@@ -325,25 +350,7 @@ export class TranslationSeedingService {
         }
       }
 
-      if (Object.keys(subset).length > 0) {
-        const fieldNames = Object.keys(subset);
-        const rawJson = await generateStructuredAnalysis({
-          apiKey: appConfig().gemini.apiKey,
-          primaryModel: 'gemini-3.1-flash-lite',
-          prompt: buildTranslationPrompt(entityType, loaded?.displayName ?? entityType, subset),
-          responseSchema: buildTranslationSchema(fieldNames),
-          temperature: 0.3,
-          maxOutputTokens: 8192,
-        });
-
-        const translations: Record<string, string> = JSON.parse(rawJson);
-
-        for (const field of fieldNames) {
-          const en = translations[field];
-          if (en == null) continue;
-          await this.upsertForceAuto(entityType, entityId, field, en, this.computeSourceHash(subset[field]));
-        }
-      }
+      await this.translateAndUpsert(entityType, entityId, loaded?.displayName ?? entityType, subset, { force: true });
     } else {
       // BULK path: skip revisado and already-fresh fields (existing behaviour unchanged).
       if (loaded) {
