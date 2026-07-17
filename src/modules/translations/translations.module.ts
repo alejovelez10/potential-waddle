@@ -23,8 +23,17 @@ import { Guide } from '../guides/entities/guide.entity';
  * Providers:
  *   - TranslationResolverService: read-path (batchLoad, load, overlay).
  *   - TranslationSeedingService: write-path (seedEntity, needsSeeding, upsertTranslation,
- *     sweepPending, overrideTranslation, getTranslationState, seedOnDemand).
- *   - TranslationSweepCron: @Cron(EVERY_10_MINUTES) sweep via sweepPending({ batchSize: 50 }).
+ *     sweepPending, overrideTranslation, getTranslationState, seedOnDemand, and the
+ *     admin-only seedAdminEntity/overrideAdmin/batchStateForIds/countMissingForType/
+ *     seedMissingForType added in quick 260717-abz).
+ *   - TranslationSweepCron: sweepPending({ batchSize: 50 }) — its @Cron(EVERY_10_MINUTES)
+ *     schedule is DISABLED (quick 260717-abz, D-5; see translation-sweep.cron.ts for why).
+ *     Seeding is now manual via POST /translations/admin/:entityType/seed-missing.
+ *
+ * Controllers:
+ *   - TranslationsController: owner-facing (@Auth() + IDOR ownership).
+ *   - AdminTranslationsController: superadmin-only (@SuperAdmin()), category/facility
+ *     only (ADMIN_TRANSLATABLE_ENTITY_TYPES) — these entities have no owner column.
  *
  * String-token providers ('LodgingRepository', 'ExperienceRepository', etc.) supply the
  * TypeORM repositories needed by TranslationSeedingService.assertOwnership / resolveOwnerUserId
