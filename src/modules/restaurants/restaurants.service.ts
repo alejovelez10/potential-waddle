@@ -219,8 +219,11 @@ export class RestaurantsService {
 
     // Batch-load translations once for all restaurants (N+1 guard — zero AI at request time)
     let translationsMap: Map<string, Record<string, string>> = new Map();
+    let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && sortedRestaurants.length) {
       translationsMap = await this.translationResolver.batchLoad('restaurant', sortedRestaurants.map(r => r.id), locale);
+      const categoryIds = [...new Set(sortedRestaurants.flatMap(r => (r.categories ?? []).map(c => c.id)))];
+      categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
     return restaurantsWithPromotions.map(({ restaurant, hasPromotions, latestPromotion, userReview }) => {
@@ -228,6 +231,12 @@ export class RestaurantsService {
         locale !== 'es'
           ? this.translationResolver.overlay({ ...restaurant }, translationsMap.get(restaurant.id) ?? {})
           : restaurant;
+      if (locale !== 'es') {
+        (base as Restaurant).categories = this.translationResolver.overlayCollection(
+          restaurant.categories ?? [],
+          categoryTranslations,
+        );
+      }
       const dto = new RestaurantIndexDto({ data: base as Restaurant, userReview: userReview?.id });
       (dto as any).hasPromotions = hasPromotions;
       (dto as any).latestPromotionValue = latestPromotion?.value;
@@ -541,6 +550,21 @@ export class RestaurantsService {
             await this.translationResolver.load('restaurant', restaurant.id, locale),
           )
         : restaurant;
+
+    if (locale !== 'es') {
+      const [categoryTranslations, facilityTranslations] = await Promise.all([
+        this.translationResolver.batchLoad('category', (restaurant.categories ?? []).map(c => c.id), locale),
+        this.translationResolver.batchLoad('facility', (restaurant.facilities ?? []).map(f => f.id), locale),
+      ]);
+      (base as Restaurant).categories = this.translationResolver.overlayCollection(
+        restaurant.categories ?? [],
+        categoryTranslations,
+      );
+      (base as Restaurant).facilities = this.translationResolver.overlayCollection(
+        restaurant.facilities ?? [],
+        facilityTranslations,
+      );
+    }
 
     const dto = new RestaurantDto({ data: base as Restaurant, userReview: userReview?.id });
     (dto as any).hasPromotions = hasPromotions;

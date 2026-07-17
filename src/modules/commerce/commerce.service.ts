@@ -214,8 +214,11 @@ export class CommerceService {
 
     // Batch-load translations once for all commerces (N+1 guard — zero AI at request time)
     let translationsMap: Map<string, Record<string, string>> = new Map();
+    let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && sortedCommerces.length) {
       translationsMap = await this.translationResolver.batchLoad('commerce', sortedCommerces.map(c => c.id), locale);
+      const categoryIds = [...new Set(sortedCommerces.flatMap(c => (c.categories ?? []).map(cat => cat.id)))];
+      categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
     return sortedCommerces.map(commerce => {
@@ -224,6 +227,12 @@ export class CommerceService {
         locale !== 'es'
           ? this.translationResolver.overlay({ ...commerce }, translationsMap.get(commerce.id) ?? {})
           : commerce;
+      if (locale !== 'es') {
+        (base as Commerce).categories = this.translationResolver.overlayCollection(
+          commerce.categories ?? [],
+          categoryTranslations,
+        );
+      }
       return new CommerceIndexDto(base as Commerce, userReview?.id);
     });
   }
@@ -496,6 +505,21 @@ export class CommerceService {
             await this.translationResolver.load('commerce', commerce.id, locale),
           )
         : commerce;
+
+    if (locale !== 'es') {
+      const [categoryTranslations, facilityTranslations] = await Promise.all([
+        this.translationResolver.batchLoad('category', (commerce.categories ?? []).map(c => c.id), locale),
+        this.translationResolver.batchLoad('facility', (commerce.facilities ?? []).map(f => f.id), locale),
+      ]);
+      (base as Commerce).categories = this.translationResolver.overlayCollection(
+        commerce.categories ?? [],
+        categoryTranslations,
+      );
+      (base as Commerce).facilities = this.translationResolver.overlayCollection(
+        commerce.facilities ?? [],
+        facilityTranslations,
+      );
+    }
 
     return new CommerceFullDto(base as Commerce, userReview?.id);
   }

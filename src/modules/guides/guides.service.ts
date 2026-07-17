@@ -251,8 +251,11 @@ export class GuidesService {
 
     // Batch-load translations once for all guides (N+1 guard — zero AI at request time)
     let translationsMap: Map<string, Record<string, string>> = new Map();
+    let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && guides.length) {
       translationsMap = await this.translationResolver.batchLoad('guide', guides.map(g => g.id), locale);
+      const categoryIds = [...new Set(guides.flatMap(g => (g.categories ?? []).map(c => c.id)))];
+      categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
     return {
@@ -265,6 +268,9 @@ export class GuidesService {
           locale !== 'es'
             ? this.translationResolver.overlay({ ...guide }, translationsMap.get(guide.id) ?? {})
             : guide;
+        if (locale !== 'es') {
+          (base as Guide).categories = this.translationResolver.overlayCollection(guide.categories ?? [], categoryTranslations);
+        }
         return new GuideDto({ data: base as Guide, userReview: userReview?.id });
       }),
     };
@@ -387,6 +393,16 @@ export class GuidesService {
             await this.translationResolver.load('guide', guide.id, locale),
           )
         : guide;
+
+    // Guides no tienen facilities (ni entidad, ni relation, ni DTO) — SOLO categorías.
+    if (locale !== 'es') {
+      const categoryTranslations = await this.translationResolver.batchLoad(
+        'category',
+        (guide.categories ?? []).map(c => c.id),
+        locale,
+      );
+      (base as Guide).categories = this.translationResolver.overlayCollection(guide.categories ?? [], categoryTranslations);
+    }
 
     return new GuideDto({ data: base as Guide, userReview: userReview?.id });
   }

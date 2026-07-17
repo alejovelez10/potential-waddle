@@ -180,8 +180,11 @@ export class PlacesService {
 
     // Batch-load translations once for all places (N+1 guard — zero AI at request time)
     let translationsMap: Map<string, Record<string, string>> = new Map();
+    let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && filteredPlaces.length) {
       translationsMap = await this.translationResolver.batchLoad('place', filteredPlaces.map(p => p.id), locale);
+      const categoryIds = [...new Set(filteredPlaces.flatMap(p => (p.categories ?? []).map(c => c.id)))];
+      categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
     return filteredPlaces.map(place => {
@@ -190,6 +193,9 @@ export class PlacesService {
         locale !== 'es'
           ? this.translationResolver.overlay({ ...place }, translationsMap.get(place.id) ?? {})
           : place;
+      if (locale !== 'es') {
+        (base as Place).categories = this.translationResolver.overlayCollection(place.categories ?? [], categoryTranslations);
+      }
       return new PlaceDto(base as Place, review?.id);
     });
   }
@@ -247,6 +253,15 @@ export class PlacesService {
             await this.translationResolver.load('place', place.id, locale),
           )
         : place;
+
+    if (locale !== 'es') {
+      const [categoryTranslations, facilityTranslations] = await Promise.all([
+        this.translationResolver.batchLoad('category', (place.categories ?? []).map(c => c.id), locale),
+        this.translationResolver.batchLoad('facility', (place.facilities ?? []).map(f => f.id), locale),
+      ]);
+      (base as Place).categories = this.translationResolver.overlayCollection(place.categories ?? [], categoryTranslations);
+      (base as Place).facilities = this.translationResolver.overlayCollection(place.facilities ?? [], facilityTranslations);
+    }
 
     return new PlaceDetailDto({ place: base as Place, reviewId: review?.id });
   }

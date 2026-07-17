@@ -237,8 +237,11 @@ export class ExperiencesService {
 
     // Batch-load translations once for all experiences (N+1 guard — zero AI at request time)
     let translationsMap: Map<string, Record<string, string>> = new Map();
+    let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && sortedExperiences.length) {
       translationsMap = await this.translationResolver.batchLoad('experience', sortedExperiences.map(e => e.id), locale);
+      const categoryIds = [...new Set(sortedExperiences.flatMap(e => (e.categories ?? []).map(c => c.id)))];
+      categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
     return experiencesWithPromotions.map(({ experience, hasPromotions, latestPromotion }) => {
@@ -247,6 +250,12 @@ export class ExperiencesService {
         locale !== 'es'
           ? this.translationResolver.overlay({ ...experience }, translationsMap.get(experience.id) ?? {})
           : experience;
+      if (locale !== 'es') {
+        (base as Experience).categories = this.translationResolver.overlayCollection(
+          experience.categories ?? [],
+          categoryTranslations,
+        );
+      }
       const dto = new ExperienceIndexDto({ data: base as Experience, userReview: userReview?.id });
       (dto as any).hasPromotions = hasPromotions;
       (dto as any).latestPromotionValue = latestPromotion?.value;
@@ -364,6 +373,21 @@ export class ExperiencesService {
             await this.translationResolver.load('experience', experience.id, locale),
           )
         : experience;
+
+    if (locale !== 'es') {
+      const [categoryTranslations, facilityTranslations] = await Promise.all([
+        this.translationResolver.batchLoad('category', (experience.categories ?? []).map(c => c.id), locale),
+        this.translationResolver.batchLoad('facility', (experience.facilities ?? []).map(f => f.id), locale),
+      ]);
+      (base as Experience).categories = this.translationResolver.overlayCollection(
+        experience.categories ?? [],
+        categoryTranslations,
+      );
+      (base as Experience).facilities = this.translationResolver.overlayCollection(
+        experience.facilities ?? [],
+        facilityTranslations,
+      );
+    }
 
     const dto = new ExperienceDto({ data: base as Experience, userReview: userReview?.id });
     (dto as any).hasPromotions = hasPromotions;
