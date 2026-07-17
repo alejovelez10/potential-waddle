@@ -27,6 +27,7 @@ import {
   AdminCategoriesListDto,
 } from '../dto/categories';
 import { ContentTypes } from 'src/modules/common/constants';
+import { Auth } from '../../auth/decorators';
 import { RequestLocale } from '../../translations/request-locale.decorator';
 import { TranslationResolverService } from '../../translations/translation-resolver.service';
 
@@ -41,6 +42,7 @@ export class CategoriesController {
   // * CREATE NEW CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @Auth()
   create(@Body() createCategoryDto: CreateCategoryDto) {
     return this.categoriesService.create(createCategoryDto);
   }
@@ -103,6 +105,7 @@ export class CategoriesController {
   // * GET ALL CATEGORIES (PAGINATED - ADMIN)
   // * -------------------------------------------------------------------------------------------------------------
   @Get('admin/list')
+  @Auth()
   @ApiOperation({ summary: 'Get paginated categories for admin' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -131,6 +134,7 @@ export class CategoriesController {
   // * UPDATE CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @Auth()
   @ApiOperation({ summary: 'Update a category' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })
   @ApiResponse({
@@ -147,6 +151,7 @@ export class CategoriesController {
   // * DELETE CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @Auth()
   @ApiOperation({ summary: 'Delete a category' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })
   @ApiResponse({
