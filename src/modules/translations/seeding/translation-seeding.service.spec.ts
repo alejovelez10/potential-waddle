@@ -345,6 +345,30 @@ describe('TranslationSeedingService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('superadmin bypasses ownership and seeds a lodging owned by someone else', async () => {
+      // Lodging owned by userA; caller is userB but isSuperUser — must NOT throw.
+      lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
+      // loadEntityES
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción en español.' },
+      ]);
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(
+        JSON.stringify({ description: 'Test cabin description.' }),
+      );
+      // getTranslationState
+      translationRepo.find.mockResolvedValueOnce([
+        { field: 'description', value: 'Test cabin description.', source: 'auto', sourceHash: sha256('Descripción en español.'), updatedAt: new Date() },
+      ]);
+      dataSource.query.mockResolvedValueOnce([
+        { display_name: 'Cabaña Test', description: 'Descripción en español.' },
+      ]);
+
+      const result = await service.seedOnDemand('lodging', ENTITY_ID, 'userB', { isSuperUser: true });
+
+      expect(result).toHaveProperty('fields');
+      expect(result.fields).toHaveProperty('description');
+    });
+
     it('loads ES from base table, seeds, and returns { fields } object', async () => {
       lodgingRepo.findOne.mockResolvedValueOnce({ id: ENTITY_ID, user: { id: 'userA' } });
 

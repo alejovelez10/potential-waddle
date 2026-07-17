@@ -47,7 +47,7 @@ export class TranslationsController {
     @Body('fields') fields: Record<string, string>,
     @GetUser() user: User,
   ) {
-    return this.seedingService.overrideTranslation(entityType, entityId, fields ?? {}, user.id);
+    return this.seedingService.overrideTranslation(entityType, entityId, fields ?? {}, user.id, user.isSuperUser);
   }
 
   // ---------------------------------------------------------------------------
@@ -69,6 +69,6 @@ export class TranslationsController {
     @Body('fields') fields: string[] | undefined,
     @GetUser() user: User,
   ) {
-    return this.seedingService.seedOnDemand(entityType, entityId, user.id, { fields });
+    return this.seedingService.seedOnDemand(entityType, entityId, user.id, { fields, isSuperUser: user.isSuperUser });
   }
 }

@@ -191,8 +191,9 @@ export class TranslationSeedingService {
     entityId: string,
     fields: Record<string, string>,
     userId: string,
+    isSuperUser = false,
   ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
-    await this.assertOwnership(entityType, entityId, userId);
+    await this.assertOwnership(entityType, entityId, userId, isSuperUser);
 
     // Load the current ES source values so each revisado row stores the hash of the
     // ES it was based on. Without this the row's source_hash stays NULL and the field
@@ -236,10 +237,20 @@ export class TranslationSeedingService {
   }
 
   /**
-   * Asserts that the authenticated user owns the given entity.
-   * Throws ForbiddenException if ownership cannot be established.
+   * Asserts that the authenticated user may manage the given entity's translations.
+   * Superadmins bypass the ownership check entirely (they manage every business from the
+   * admin onboarding wizard); everyone else must be the literal owner (IDOR guard intact).
+   * Throws ForbiddenException if neither condition holds.
    */
-  private async assertOwnership(entityType: string, entityId: string, userId: string): Promise<void> {
+  private async assertOwnership(
+    entityType: string,
+    entityId: string,
+    userId: string,
+    isSuperUser = false,
+  ): Promise<void> {
+    // Superadmin bypass: they edit businesses they don't own via the admin wizard.
+    if (isSuperUser) return;
+
     if (entityType === 'experience') {
       // Pitfall 7: experience ownership is via guide.user.id, NOT experience.user.id
       const experience = await this.experienceRepo.findOne({
@@ -349,9 +360,9 @@ export class TranslationSeedingService {
     entityType: string,
     entityId: string,
     userId: string,
-    opts?: { fields?: string[] },
+    opts?: { fields?: string[]; isSuperUser?: boolean },
   ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
-    await this.assertOwnership(entityType, entityId, userId);
+    await this.assertOwnership(entityType, entityId, userId, opts?.isSuperUser);
     const loaded = await this.loadEntityES(entityType, entityId);
     const esValues = loaded?.fieldsES ?? {};
 
