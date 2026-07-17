@@ -253,16 +253,22 @@ export class LodgingsService {
 
     // Batch-load translations once for all lodgings (N+1 guard — D-11 zero AI at request time)
     let translationsMap: Map<string, Record<string, string>> = new Map();
+    let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && sortedLodgings.length) {
       translationsMap = await this.translationResolver.batchLoad(
         'lodging',
         sortedLodgings.map(l => l.id),
         locale,
       );
+      const categoryIds = [...new Set(sortedLodgings.flatMap(l => (l.categories ?? []).map(c => c.id)))];
+      categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
     return lodgingsWithPromotions.map(({ lodging, hasPromotions, latestPromotion, userReview }) => {
       const base = locale !== 'es' ? this.translationResolver.overlay({ ...lodging }, translationsMap.get(lodging.id) ?? {}) : lodging;
+      if (locale !== 'es') {
+        (base as Lodging).categories = this.translationResolver.overlayCollection(lodging.categories ?? [], categoryTranslations);
+      }
       const dto = new LodgingIndexDto(base as Lodging, userReview?.id);
       dto.hasPromotions = hasPromotions;
       dto.latestPromotionValue = latestPromotion?.value;
@@ -465,6 +471,15 @@ export class LodgingsService {
             await this.translationResolver.load('lodging', lodging.id, locale),
           )
         : lodging;
+
+    if (locale !== 'es') {
+      const [categoryTranslations, facilityTranslations] = await Promise.all([
+        this.translationResolver.batchLoad('category', (lodging.categories ?? []).map(c => c.id), locale),
+        this.translationResolver.batchLoad('facility', (lodging.facilities ?? []).map(f => f.id), locale),
+      ]);
+      (base as Lodging).categories = this.translationResolver.overlayCollection(lodging.categories ?? [], categoryTranslations);
+      (base as Lodging).facilities = this.translationResolver.overlayCollection(lodging.facilities ?? [], facilityTranslations);
+    }
 
     const dto = new LodgingFullDto(base as Lodging, userReview?.id);
     (dto as any).hasPromotions = hasPromotions;

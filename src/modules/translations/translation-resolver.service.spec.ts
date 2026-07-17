@@ -147,4 +147,35 @@ describe('TranslationResolverService', () => {
       expect(result.description).toBe('EN desc');
     });
   });
+
+  describe('overlayCollection', () => {
+    it('overlays translations onto each item by id', () => {
+      const items = [{ id: 'a', name: 'Hotel' }];
+      const translationsMap = new Map([['a', { name: 'Inn' }]]);
+
+      const result = service.overlayCollection(items, translationsMap);
+
+      expect(result).toEqual([{ id: 'a', name: 'Inn' }]);
+    });
+
+    it('keeps the base (es) value for items without a row in the Map (implicit fallback)', () => {
+      const items = [{ id: 'b', name: 'Cabaña' }];
+      const translationsMap = new Map<string, Record<string, string>>();
+
+      const result = service.overlayCollection(items, translationsMap);
+
+      expect(result).toEqual([{ id: 'b', name: 'Cabaña' }]);
+    });
+
+    it('does NOT mutate the original array or its items', () => {
+      const items = [{ id: 'a', name: 'Hotel' }];
+      const translationsMap = new Map([['a', { name: 'Inn' }]]);
+
+      const result = service.overlayCollection(items, translationsMap);
+
+      expect(items).toEqual([{ id: 'a', name: 'Hotel' }]);
+      expect(result).not.toBe(items);
+      expect(result[0]).not.toBe(items[0]);
+    });
+  });
 });

@@ -59,4 +59,17 @@ export class TranslationResolverService {
     }
     return out as T;
   }
+
+  /**
+   * Overlay de traducciones sobre cada item de una colección (relaciones anidadas
+   * tipo categories/facilities). Reutiliza el overlay shallow por item sobre una copia
+   * — ni el array ni los objetos originales se mutan (Pitfall 5). Items sin fila en el
+   * Map conservan su valor base (es) — fallback implícito.
+   */
+  overlayCollection<T extends { id: string }>(items: T[], translationsMap: Map<string, Record<string, string>>): T[] {
+    return items.map(
+      (item) =>
+        this.overlay({ ...item } as unknown as Record<string, unknown>, translationsMap.get(item.id) ?? {}) as unknown as T,
+    );
+  }
 }
