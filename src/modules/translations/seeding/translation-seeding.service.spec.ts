@@ -4,7 +4,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken, getDataSourceToken } from '@nestjs/typeorm';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { EntityTranslation } from '../entities/entity-translation.entity';
 import { TranslationSeedingService } from './translation-seeding.service';
@@ -751,6 +751,233 @@ describe('TranslationSeedingService', () => {
 
       // Only one entity processed — batchSize enforced
       expect(seedEntitySpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Admin translation surface (quick 260717-abz) — category/facility, NO owner
+  // -------------------------------------------------------------------------
+
+  describe('seedAdminEntity', () => {
+    it('force=true translates and overwrites an existing revisado row (bypasses the guard)', async () => {
+      // loadEntityES for the translate call
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Hoteles', name: 'Hoteles' }]);
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(JSON.stringify({ name: 'Hotels' }));
+
+      // getTranslationState: EN rows (existing revisado row), then loadEntityES again
+      translationRepo.find.mockResolvedValueOnce([
+        { field: 'name', value: 'Old EN', source: 'revisado', sourceHash: null, updatedAt: new Date() },
+      ]);
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Hoteles', name: 'Hoteles' }]);
+
+      await service.seedAdminEntity('category', ENTITY_ID, { force: true });
+
+      const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
+      const forceCall = queryCalls.find(
+        ([sql]: [string]) =>
+          typeof sql === 'string' && sql.includes('ON CONFLICT') && !sql.includes("source != 'revisado'"),
+      );
+      expect(forceCall).toBeDefined();
+    });
+
+    it('without force, the translation upsert keeps the revisado guard', async () => {
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Hoteles', name: 'Hoteles' }]);
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(JSON.stringify({ name: 'Hotels' }));
+      translationRepo.find.mockResolvedValueOnce([]);
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Hoteles', name: 'Hoteles' }]);
+
+      await service.seedAdminEntity('category', ENTITY_ID);
+
+      const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
+      expect(queryCalls.length).toBeGreaterThan(0);
+      for (const [sql] of queryCalls) {
+        expect(sql as string).toContain("source != 'revisado'");
+      }
+    });
+
+    it('does not call Gemini when the entity has no ES source value', async () => {
+      dataSource.query.mockResolvedValueOnce([]); // loadEntityES finds nothing
+      translationRepo.find.mockResolvedValueOnce([]);
+      dataSource.query.mockResolvedValueOnce([]);
+
+      await service.seedAdminEntity('category', ENTITY_ID);
+
+      expect(generateStructuredAnalysis).not.toHaveBeenCalled();
+    });
+
+    it('performs no ownership check (neither lodgingRepo nor experienceRepo is queried)', async () => {
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Hoteles', name: 'Hoteles' }]);
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValueOnce(JSON.stringify({ name: 'Hotels' }));
+      translationRepo.find.mockResolvedValueOnce([]);
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Hoteles', name: 'Hoteles' }]);
+
+      await service.seedAdminEntity('category', ENTITY_ID, { force: true });
+
+      expect(lodgingRepo.findOne).not.toHaveBeenCalled();
+      expect(experienceRepo.findOne).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('overrideAdmin', () => {
+    it('writes source=revisado with the sourceHash of the current ES value, no ownership check', async () => {
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Piscina', name: 'Piscina' }]);
+      translationRepo.find.mockResolvedValueOnce([]);
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Piscina', name: 'Piscina' }]);
+
+      const result = await service.overrideAdmin('facility', ENTITY_ID, { name: 'Pool' });
+
+      expect(result).toHaveProperty('fields');
+      expect(lodgingRepo.findOne).not.toHaveBeenCalled();
+      expect(experienceRepo.findOne).not.toHaveBeenCalled();
+
+      const expectedHash = sha256('Piscina');
+      const queryCalls = (translationRepo.query as jest.Mock).mock.calls;
+      const hasRevisadoWithHash = queryCalls.some(
+        ([_sql, params]: [string, unknown[]]) =>
+          Array.isArray(params) && params.includes('revisado') && params.includes(expectedHash),
+      );
+      expect(hasRevisadoWithHash).toBe(true);
+    });
+  });
+
+  describe('batchStateForIds', () => {
+    it('returns {} without querying entity_translation when ids is empty', async () => {
+      const result = await service.batchStateForIds('category', []);
+      expect(result).toEqual({});
+      expect(translationRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('returns a Record indexed by entityId', async () => {
+      const idA = 'cat-a';
+      const idB = 'cat-b';
+
+      translationRepo.find.mockResolvedValueOnce([
+        {
+          entityId: idA,
+          field: 'name',
+          value: 'Hotels',
+          source: 'auto',
+          sourceHash: sha256('Hoteles'),
+          updatedAt: new Date(),
+        },
+      ]);
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Hoteles', name: 'Hoteles' }]); // loadEntityES(idA)
+      dataSource.query.mockResolvedValueOnce([{ display_name: 'Restaurantes', name: 'Restaurantes' }]); // loadEntityES(idB)
+
+      const result = await service.batchStateForIds('category', [idA, idB]);
+
+      expect(Object.keys(result)).toEqual([idA, idB]);
+      expect(result[idA].fields.name.value).toBe('Hotels');
+      expect(result[idB].fields.name.value).toBeNull();
+    });
+
+    it('throws BadRequestException for an entityType with no ENTITY_SOURCE_META', async () => {
+      await expect(service.batchStateForIds('unknown-type', ['x'])).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('countMissingForType', () => {
+    it('counts base-table rows with no EN row, via NOT EXISTS against entity_translation', async () => {
+      dataSource.query.mockResolvedValueOnce([{ count: 3 }]);
+
+      const result = await service.countMissingForType('category');
+
+      expect(result).toBe(3);
+      const [sql, params] = (dataSource.query as jest.Mock).mock.calls[0];
+      expect(sql).toContain('NOT EXISTS');
+      expect(sql).toContain('FROM "category" b');
+      expect(params).toEqual(['category', 'name']);
+    });
+
+    it('throws BadRequestException for an entityType with no ENTITY_SOURCE_META', async () => {
+      await expect(service.countMissingForType('unknown-type')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('seedMissingForType', () => {
+    it('MT-abz: paginates the BASE table (category), NOT entity_translation, to find candidates', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          { id: 'cat-1', display_name: 'Hoteles', name: 'Hoteles' },
+          { id: 'cat-2', display_name: 'Restaurantes', name: 'Restaurantes' },
+        ])
+        // countMissingForType at the end
+        .mockResolvedValueOnce([{ count: 0 }]);
+
+      // needsSeeding for each row → no EN rows stored yet
+      translationRepo.find.mockResolvedValue([]);
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValue(JSON.stringify({ name: 'Translated' }));
+
+      const result = await service.seedMissingForType('category', 50);
+
+      const firstCall = (dataSource.query as jest.Mock).mock.calls[0];
+      expect(firstCall[0]).toContain('FROM "category"');
+      expect(firstCall[0]).not.toContain('entity_translation');
+
+      expect(result.processed).toBe(2);
+      expect(result.failed).toBe(0);
+      expect(result.remaining).toBe(0);
+    });
+
+    it('one entity failing does not abort the batch — counted in failed, the other still processed', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          { id: 'cat-1', display_name: 'Hoteles', name: 'Hoteles' },
+          { id: 'cat-2', display_name: 'Restaurantes', name: 'Restaurantes' },
+        ])
+        .mockResolvedValueOnce([{ count: 1 }]);
+
+      translationRepo.find.mockResolvedValue([]);
+      (generateStructuredAnalysis as jest.Mock)
+        .mockRejectedValueOnce(new Error('Gemini quota exceeded'))
+        .mockResolvedValueOnce(JSON.stringify({ name: 'Restaurants' }));
+
+      const result = await service.seedMissingForType('category', 50);
+
+      expect(result.processed).toBe(1);
+      expect(result.failed).toBe(1);
+    });
+
+    it('skips rows that already have an up-to-date EN row (needsSeeding empty) without calling Gemini', async () => {
+      const currentES = 'Hoteles';
+      const currentHash = sha256(currentES);
+
+      dataSource.query
+        .mockResolvedValueOnce([{ id: 'cat-1', display_name: 'Hoteles', name: currentES }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+
+      translationRepo.find.mockResolvedValueOnce([
+        { field: 'name', value: 'Hotels', source: 'auto', sourceHash: currentHash },
+      ]);
+
+      const result = await service.seedMissingForType('category', 50);
+
+      expect(generateStructuredAnalysis).not.toHaveBeenCalled();
+      expect(result.processed).toBe(0);
+      expect(result.failed).toBe(0);
+    });
+
+    it('respects batchSize — does not attempt more than batchSize entities', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          { id: 'cat-1', display_name: 'Hoteles', name: 'Hoteles' },
+          { id: 'cat-2', display_name: 'Restaurantes', name: 'Restaurantes' },
+        ])
+        .mockResolvedValueOnce([{ count: 1 }]);
+
+      translationRepo.find.mockResolvedValue([]);
+      (generateStructuredAnalysis as jest.Mock).mockResolvedValue(JSON.stringify({ name: 'Translated' }));
+
+      const result = await service.seedMissingForType('category', 1);
+
+      expect(result.processed + result.failed).toBe(1);
+      // Only 1 row was requested via LIMIT
+      const [, params] = (dataSource.query as jest.Mock).mock.calls[0];
+      expect(params).toEqual([1, 0]);
+    });
+
+    it('throws BadRequestException for an entityType with no ENTITY_SOURCE_META', async () => {
+      await expect(service.seedMissingForType('unknown-type', 50)).rejects.toThrow(BadRequestException);
     });
   });
 });

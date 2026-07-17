@@ -289,12 +289,27 @@ export class TranslationSeedingService {
     const loaded = await this.loadEntityES(entityType, entityId);
     const esValues: Record<string, string> = loaded?.fieldsES ?? {};
 
-    // 3. Build the union of auto-translatable field names and field names with EN rows
+    return { fields: this.buildFieldsState(entityType, enRows, esValues) };
+  }
+
+  /**
+   * buildFieldsState (quick 260717-abz) — extracted from getTranslationState so
+   * batchStateForIds can derive the same { source, value, sourceStale, updatedAt }
+   * shape per entity without re-deriving the badge logic.
+   *
+   * fields = UNION of TRANSLATABLE_FIELDS_BY_ENTITY[entityType] (auto-translatable;
+   * appear as null when unseeded) and field names present in enRows (covers
+   * manual-override-only fields like name/title).
+   */
+  private buildFieldsState(
+    entityType: string,
+    enRows: EntityTranslation[],
+    esValues: Record<string, string>,
+  ): Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> {
     const translatableFields: string[] = TRANSLATABLE_FIELDS_BY_ENTITY[entityType] ?? [];
     const enRowFields: string[] = enRows.map((r) => r.field);
     const allFields = Array.from(new Set([...translatableFields, ...enRowFields]));
 
-    // 4. Build the fields record
     const fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> = {};
 
     for (const field of allFields) {
@@ -310,7 +325,7 @@ export class TranslationSeedingService {
       fields[field] = { source, value, sourceStale, updatedAt };
     }
 
-    return { fields };
+    return fields;
   }
 
   // ---------------------------------------------------------------------------
@@ -510,5 +525,203 @@ export class TranslationSeedingService {
     }
 
     this.logger.log(`(translation-sweep) sweepPending done — processed up to ${opts.batchSize - remaining} entities`);
+  }
+
+  // ===========================================================================
+  // Admin translation surface (quick 260717-abz) — category/facility, NO owner.
+  // These methods deliberately skip assertOwnership: category/facility have no
+  // `user` column, so the owner-scoped model does not apply to them. Authorization
+  // lives in AdminTranslationsController's @SuperAdmin() guard, not here.
+  // The allowlist (ADMIN_TRANSLATABLE_ENTITY_TYPES) is enforced by the controller;
+  // these methods additionally guard against an unknown entityType via ENTITY_SOURCE_META
+  // so a raw request never reaches string-interpolated SQL with an unmapped table name.
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // seedAdminEntity — per-row ✨ button. opts.force=true bypasses the revisado
+  // guard (DD-5 — explicit admin action); opts.force=false/absent respects it.
+  // ---------------------------------------------------------------------------
+
+  async seedAdminEntity(
+    entityType: string,
+    entityId: string,
+    opts?: { force?: boolean },
+  ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
+    const loaded = await this.loadEntityES(entityType, entityId);
+    const esValues = loaded?.fieldsES ?? {};
+    const subset = this.translatableSubset(entityType, esValues);
+
+    await this.translateAndUpsert(entityType, entityId, loaded?.displayName ?? entityType, subset, {
+      force: opts?.force,
+    });
+
+    return this.getTranslationState(entityType, entityId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // overrideAdmin — manual EN edit from the inline cell. Same body as
+  // overrideTranslation (MT-02) minus assertOwnership: category/facility have
+  // no owner to assert against. Reuses upsertRevisadoRow — no duplication.
+  // ---------------------------------------------------------------------------
+
+  async overrideAdmin(
+    entityType: string,
+    entityId: string,
+    fields: Record<string, string>,
+  ): Promise<{ fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }> {
+    const loaded = await this.loadEntityES(entityType, entityId);
+    const esValues = loaded?.fieldsES ?? {};
+
+    for (const [field, value] of Object.entries(fields)) {
+      const es = esValues[field];
+      const sourceHash = es != null && es !== '' ? this.computeSourceHash(es) : null;
+      await this.upsertRevisadoRow(entityType, entityId, field, value, sourceHash);
+    }
+
+    return this.getTranslationState(entityType, entityId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // batchStateForIds — one translation-state lookup per admin list page.
+  // ONE query against entity_translation for all ids, then one loadEntityES
+  // (SELECT-only, base table) per id for staleness. Reuses buildFieldsState —
+  // no re-derivation of the badge logic that getTranslationState already owns.
+  // ---------------------------------------------------------------------------
+
+  async batchStateForIds(
+    entityType: string,
+    ids: string[],
+  ): Promise<
+    Record<string, { fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }>
+  > {
+    if (!ids.length) return {};
+
+    const meta = ENTITY_SOURCE_META[entityType];
+    if (!meta) throw new BadRequestException(`Unsupported entityType: ${entityType}`);
+
+    const enRows = await this.repo.find({
+      where: { entityType, entityId: In(ids), locale: 'en' },
+    });
+
+    const rowsByEntity = new Map<string, EntityTranslation[]>();
+    for (const row of enRows) {
+      const list = rowsByEntity.get(row.entityId) ?? [];
+      list.push(row);
+      rowsByEntity.set(row.entityId, list);
+    }
+
+    const result: Record<
+      string,
+      { fields: Record<string, { source: 'auto' | 'revisado'; value: string | null; sourceStale: boolean; updatedAt: string | null }> }
+    > = {};
+
+    for (const id of ids) {
+      const loaded = await this.loadEntityES(entityType, id);
+      const esValues = loaded?.fieldsES ?? {};
+      const rows = rowsByEntity.get(id) ?? [];
+      result[id] = { fields: this.buildFieldsState(entityType, rows, esValues) };
+    }
+
+    return result;
+  }
+
+  // ---------------------------------------------------------------------------
+  // countMissingForType — count of base-table rows with a non-empty translatable
+  // value but NO 'en' row at all. category/facility each have exactly ONE
+  // translatable field ('name'), so meta.fieldColumns[0] is used directly.
+  // ---------------------------------------------------------------------------
+
+  async countMissingForType(entityType: string): Promise<number> {
+    const meta = ENTITY_SOURCE_META[entityType];
+    if (!meta) throw new BadRequestException(`Unsupported entityType: ${entityType}`);
+
+    const [camel, col] = Object.entries(meta.fieldColumns)[0];
+
+    const rows: { count: number }[] = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS count FROM "${meta.table}" b
+       WHERE (b."${col}" IS NOT NULL AND b."${col}" != '')
+         AND NOT EXISTS (
+           SELECT 1 FROM entity_translation et
+           WHERE et.entity_type = $1 AND et.entity_id = b.id AND et.locale = 'en' AND et.field = $2
+         )`,
+      [entityType, camel],
+    );
+
+    return rows[0]?.count ?? 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // seedMissingForType — "Traducir faltantes (N)" bulk button.
+  //
+  // CRITICAL: paginates the BASE table (e.g. "category"), exactly the pattern
+  // in src/scripts/backfill-translations.ts:340-343 — NOT entity_translation.
+  // sweepPending's bug is querying entity_translation for candidates while
+  // filtering `locale != 'en'`, a locale that is NEVER stored (only 'en' is) —
+  // that query always returns 0 rows. This method never repeats that mistake.
+  //
+  // Bounded by batchSize (default 50): at most batchSize entities are attempted
+  // (Gemini call only for those that actually needsSeeding). One failure does
+  // not abort the batch (try/catch per entity, counted in `failed`).
+  // ---------------------------------------------------------------------------
+
+  async seedMissingForType(
+    entityType: string,
+    batchSize = 50,
+  ): Promise<{ processed: number; failed: number; remaining: number }> {
+    const meta = ENTITY_SOURCE_META[entityType];
+    if (!meta) throw new BadRequestException(`Unsupported entityType: ${entityType}`);
+
+    const fieldEntries = Object.entries(meta.fieldColumns);
+    const selectCols = [
+      `id::text AS id`,
+      `(${meta.displayNameSql})::text AS display_name`,
+      ...fieldEntries.map(([camel, sql]) => `"${sql}" AS "${camel}"`),
+    ];
+    const whereClause = fieldEntries.map(([, sql]) => `"${sql}" IS NOT NULL AND "${sql}" != ''`).join(' OR ');
+
+    let processed = 0;
+    let failed = 0;
+    let attempted = 0;
+    let offset = 0;
+
+    while (attempted < batchSize) {
+      const rows: Record<string, string>[] = await this.dataSource.query(
+        `SELECT ${selectCols.join(', ')} FROM "${meta.table}" WHERE ${whereClause} LIMIT $1 OFFSET $2`,
+        [batchSize, offset],
+      );
+
+      if (!rows.length) break;
+      offset += rows.length;
+
+      for (const row of rows) {
+        if (attempted >= batchSize) break;
+        attempted++;
+
+        const fieldsES: Record<string, string> = {};
+        for (const [camel] of fieldEntries) {
+          const val = row[camel];
+          if (val != null && val !== '') fieldsES[camel] = val;
+        }
+
+        try {
+          const needsSeeding = await this.needsSeeding(entityType, row['id'], fieldsES);
+          if (!Object.keys(needsSeeding).length) continue;
+
+          await this.translateAndUpsert(entityType, row['id'], row['display_name'] ?? entityType, needsSeeding, {
+            force: false,
+          });
+          processed++;
+        } catch (err) {
+          this.logger.error(`(seedMissingForType) Failed to seed ${entityType}/${row['id']}`, err);
+          failed++;
+        }
+      }
+
+      // Fewer rows than requested means we've reached the end of the table.
+      if (rows.length < batchSize) break;
+    }
+
+    const remaining = await this.countMissingForType(entityType);
+    return { processed, failed, remaining };
   }
 }

@@ -7,6 +7,7 @@ import { TranslationResolverService } from './translation-resolver.service';
 import { TranslationSeedingService } from './seeding/translation-seeding.service';
 import { TranslationSweepCron } from './seeding/translation-sweep.cron';
 import { TranslationsController } from './translations.controller';
+import { AdminTranslationsController } from './admin-translations.controller';
 
 // Owner entities needed by resolveOwnerUserId / assertOwnership IDOR checks.
 // Imported directly (not via their feature modules) to avoid circular dependencies.
@@ -45,7 +46,7 @@ import { Guide } from '../guides/entities/guide.entity';
       Guide,
     ]),
   ],
-  controllers: [TranslationsController],
+  controllers: [TranslationsController, AdminTranslationsController],
   providers: [
     TranslationResolverService,
     TranslationSeedingService,
