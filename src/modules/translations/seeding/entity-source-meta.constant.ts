@@ -93,4 +93,11 @@ export const ENTITY_SOURCE_META: Record<string, EntitySourceMeta> = {
       description: 'description',
     },
   },
+  termsDocument: {
+    table: 'terms_documents',
+    displayNameSql: 'type',
+    fieldColumns: {
+      content: 'content',
+    },
+  },
 };

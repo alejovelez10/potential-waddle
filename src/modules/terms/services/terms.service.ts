@@ -5,6 +5,7 @@ import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import { User } from 'src/modules/users/entities';
 import { CloudinaryService } from 'src/modules/cloudinary/cloudinary.service';
 import { CLOUDINARY_FOLDERS } from 'src/config/cloudinary-folders';
+import { TranslationResolverService } from 'src/modules/translations/translation-resolver.service';
 
 import { TermsDocument, TermsAcceptance } from '../entities';
 import { TermsTypeEnum, TermsContextEnum, TermsFormatEnum } from '../interfaces';
@@ -35,15 +36,29 @@ export class TermsService {
     private readonly acceptsRepo: Repository<TermsAcceptance>,
     private readonly dataSource: DataSource,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly translationResolver: TranslationResolverService,
   ) {}
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * GET ACTIVE TERMS DOCUMENT FOR A TYPE
   // * ----------------------------------------------------------------------------------------------------------------
-  async findActive(type: TermsTypeEnum): Promise<TermsDocumentDto> {
+  /**
+   * `locale` defaults to 'es' (canonical, never overlaid). For any other supported locale,
+   * when the active doc is markdown, overlay the AI-translated `content` from entity_translation
+   * (quick 260718-ka1). The document's `id`/`isActive` are NEVER touched here — acceptances
+   * point to `id`, so overlaying content must not force re-acceptance (T-ka1-01).
+   * PDF docs have `content=null` and are skipped (D-3, out of scope).
+   */
+  async findActive(type: TermsTypeEnum, locale: string = 'es'): Promise<TermsDocumentDto> {
     const doc = await this.docsRepo.findOne({ where: { type, isActive: true } });
     if (!doc) throw new NotFoundException(`No active terms document for type '${type}'`);
-    return new TermsDocumentDto(doc);
+
+    const dto = new TermsDocumentDto(doc);
+    if (locale !== 'es' && doc.format === TermsFormatEnum.Markdown) {
+      const translations = await this.translationResolver.load('termsDocument', doc.id, locale);
+      return this.translationResolver.overlay({ ...dto }, translations);
+    }
+    return dto;
   }
 
   // * ----------------------------------------------------------------------------------------------------------------

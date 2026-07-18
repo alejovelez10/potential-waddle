@@ -5,6 +5,7 @@ import { Auth, OptionalAuth } from 'src/modules/auth/decorators';
 import { GetUser } from 'src/modules/common/decorators';
 import { User } from 'src/modules/users/entities';
 import { SwaggerTags } from 'src/config';
+import { RequestLocale } from 'src/modules/translations/request-locale.decorator';
 
 import { TermsService } from '../services';
 import { TermsTypeEnum } from '../interfaces';
@@ -23,8 +24,11 @@ export class TermsController {
   @ApiOperation({ summary: 'Get active T&C document by type' })
   @ApiQuery({ name: 'type', enum: TermsTypeEnum })
   @ApiOkResponse({ description: 'Active T&C document for the requested type', type: TermsDocumentDto })
-  findActive(@Query('type', new ParseEnumPipe(TermsTypeEnum)) type: TermsTypeEnum) {
-    return this.termsService.findActive(type);
+  findActive(
+    @Query('type', new ParseEnumPipe(TermsTypeEnum)) type: TermsTypeEnum,
+    @RequestLocale() locale: string,
+  ) {
+    return this.termsService.findActive(type, locale);
   }
 
   // * ----------------------------------------------------------------------------------------------------------------

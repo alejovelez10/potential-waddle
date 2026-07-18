@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
 
 import { User } from 'src/modules/users/entities';
+import { CloudinaryService } from 'src/modules/cloudinary/cloudinary.service';
+import { TranslationResolverService } from 'src/modules/translations/translation-resolver.service';
 
 import { TermsService } from './terms.service';
 import { TermsDocument, TermsAcceptance } from '../entities';
@@ -22,6 +24,12 @@ describe('TermsService', () => {
     find: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+  };
+  // Mocked TranslationResolverService (quick 260718-ka1) — real implementation exercised in
+  // translation-resolver.service.spec.ts; here we only assert TermsService wiring/guards.
+  const translationResolver = {
+    load: jest.fn(),
+    overlay: jest.fn(),
   };
 
   const USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -52,12 +60,17 @@ describe('TermsService', () => {
     acceptsRepo.find = jest.fn();
     acceptsRepo.create = jest.fn();
     acceptsRepo.save = jest.fn();
+    translationResolver.load = jest.fn();
+    translationResolver.overlay = jest.fn();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TermsService,
         { provide: getRepositoryToken(TermsDocument), useValue: docsRepo },
         { provide: getRepositoryToken(TermsAcceptance), useValue: acceptsRepo },
+        { provide: DataSource, useValue: { transaction: jest.fn() } },
+        { provide: CloudinaryService, useValue: { uploadRawFile: jest.fn() } },
+        { provide: TranslationResolverService, useValue: translationResolver },
       ],
     }).compile();
 
@@ -89,6 +102,51 @@ describe('TermsService', () => {
       docsRepo.findOne.mockResolvedValueOnce(null);
 
       await expect(service.findActive(TermsTypeEnum.Lodging)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    // * ------------------------------------------------------------------------------------------------------------
+    // * locale overlay (quick 260718-ka1, T-ka1-01)
+    // * ------------------------------------------------------------------------------------------------------------
+    it("does NOT call translationResolver when locale='es' (guard, no cache/behavior regression)", async () => {
+      const doc = buildActiveDoc(TermsTypeEnum.User, DOC_ID);
+      docsRepo.findOne.mockResolvedValueOnce(doc);
+
+      const result = await service.findActive(TermsTypeEnum.User, 'es');
+
+      expect(translationResolver.load).not.toHaveBeenCalled();
+      expect(translationResolver.overlay).not.toHaveBeenCalled();
+      expect(result.id).toBe(DOC_ID);
+      expect(result.content).toBe('# user');
+    });
+
+    it("overlays content via translationResolver when locale='en' and format=markdown, WITHOUT changing id/isActive", async () => {
+      const doc = buildActiveDoc(TermsTypeEnum.User, DOC_ID);
+      docsRepo.findOne.mockResolvedValueOnce(doc);
+      translationResolver.load.mockResolvedValueOnce({ content: '# English content' });
+      translationResolver.overlay.mockImplementationOnce((dto, translations) => ({ ...dto, ...translations }));
+
+      const result = await service.findActive(TermsTypeEnum.User, 'en');
+
+      expect(translationResolver.load).toHaveBeenCalledWith('termsDocument', DOC_ID, 'en');
+      expect(result.id).toBe(DOC_ID); // id preserved — no re-acceptance risk
+      expect(result.content).toBe('# English content');
+    });
+
+    it("does NOT overlay when format=pdf, even for locale='en' (D-3, out of scope)", async () => {
+      const pdfDoc = {
+        ...buildActiveDoc(TermsTypeEnum.User, DOC_ID),
+        format: TermsFormatEnum.Pdf,
+        content: null,
+        fileUrl: 'https://cdn.example.com/terms.pdf',
+      };
+      docsRepo.findOne.mockResolvedValueOnce(pdfDoc);
+
+      const result = await service.findActive(TermsTypeEnum.User, 'en');
+
+      expect(translationResolver.load).not.toHaveBeenCalled();
+      expect(translationResolver.overlay).not.toHaveBeenCalled();
+      expect(result.content).toBeNull();
+      expect(result.fileUrl).toBe('https://cdn.example.com/terms.pdf');
     });
   });
 

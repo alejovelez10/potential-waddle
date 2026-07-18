@@ -13,6 +13,8 @@
  *     seeding loop can skip it cleanly.
  *   - 'category' and 'facility' share a single row per item (no per-business entity_id).
  *   - 'roomType' is included for backfill/cron seeding; the Idiomas UI step is deferred.
+ *   - 'termsDocument' (T&C content) is markdown-only: PDF documents have no `content` to
+ *     translate (guard lives in TermsService.findActive, not here).
  */
 export const TRANSLATABLE_FIELDS_BY_ENTITY: Record<string, string[]> = {
   lodging: ['description', 'howToGetThere'], // name: manual-only, NOT here (Pitfall 5)
@@ -25,4 +27,5 @@ export const TRANSLATABLE_FIELDS_BY_ENTITY: Record<string, string[]> = {
   category: ['name'], // shared, one row per category
   facility: ['name'], // shared, one row per facility
   roomType: ['name', 'description'], // included in backfill/cron; no owner UI in this phase
+  termsDocument: ['content'], // markdown-only; PDF docs have content=null (quick 260718-ka1)
 };
