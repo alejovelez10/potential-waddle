@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { ScheduleModule } from '@nestjs/schedule';
+// import { ScheduleModule } from '@nestjs/schedule'; // crons OFF por ahora (ver más abajo)
 import { appConfig, JoiValidationSchema, typeOrmConfig } from './config';
 import { AuthModule } from './modules/auth/auth.module';
 import { CommonModule } from './modules/common/common.module';
@@ -57,7 +57,10 @@ import { TranslationsModule } from './modules/translations/translations.module';
       useFactory: typeOrmConfig,
     }),
 
-    ScheduleModule.forRoot(),
+    // Cron jobs desactivados por ahora (decisión 2026-07-19): sin ScheduleModule.forRoot()
+    // ningún @Cron se agenda ni dispara (menu-sweeper, events-canary, geoip-refresh,
+    // google-sync, google-reconciliation, translation-sweep). Reactivar = descomentar.
+    // ScheduleModule.forRoot(),
 
     CommonModule,
     EmailModule,
