@@ -622,6 +622,11 @@ export class UsersService {
         images: { image: true },
       },
       order: { createdAt: 'DESC' },
+      // 'query' evita el producto cartesiano de ~20 LEFT JOIN en una sola sentencia
+      // (reseña × imágenes de la entidad × imágenes de la reseña × town): en prod este
+      // endpoint tardaba ~7 s por usuario. Con 'query' TypeORM carga cada relación con
+      // SELECT ... WHERE id IN (...) — varias queries pequeñas en vez de una gigante.
+      relationLoadStrategy: 'query',
     });
 
     return reviews.map(review => {
@@ -652,8 +657,12 @@ export class UsersService {
         entity = review.guide;
       }
 
-      // Obtener la primera imagen de la entidad
-      const entityImage = entity?.images?.[0]?.imageResource?.url || null;
+      // Obtener la imagen principal de la entidad. Se ordena explícitamente por la columna
+      // `order` porque ni el LEFT JOIN ni la carga por query garantizan un orden estable:
+      // sin este sort, la miniatura de una reseña podía cambiar entre requests.
+      const entityImage =
+        [...(entity?.images ?? [])].sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))[0]?.imageResource
+          ?.url || null;
 
       return {
         id: review.id,
