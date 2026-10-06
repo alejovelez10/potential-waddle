@@ -319,6 +319,7 @@ export class TownImagesService {
   // ------------------------------------------------------------------------------------------------
   async getPublicTownInfo(slugOrName: string): Promise<{
     name: string;
+    department?: string;
     ubication?: string;
     population?: number;
     temperature?: number;
@@ -328,13 +329,13 @@ export class TownImagesService {
     // Try to find by slug first, then by name
     let town = await this.townRepository.findOne({
       where: { slug: slugOrName },
-      relations: { info: true },
+      relations: { info: true, department: true },
     });
 
     if (!town) {
       town = await this.townRepository.findOne({
         where: { name: slugOrName },
-        relations: { info: true },
+        relations: { info: true, department: true },
       });
     }
 
@@ -344,6 +345,7 @@ export class TownImagesService {
 
     return {
       name: town.name,
+      department: town.department?.name,
       ubication: town.info?.ubication,
       population: town.info?.population,
       temperature: town.info?.temperature,
