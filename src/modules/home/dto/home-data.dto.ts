@@ -12,6 +12,24 @@ export class HomeItemDto {
 
   @ApiProperty({ description: 'The first image URL', required: false })
   image?: string;
+
+  @ApiProperty({ description: 'Average rating', required: false })
+  rating?: number;
+
+  @ApiProperty({ description: 'Number of reviews', required: false })
+  reviewCount?: number;
+
+  @ApiProperty({ description: 'Name of the first category', required: false })
+  category?: string;
+
+  @ApiProperty({ description: 'Difficulty level (1-5), places and experiences only', required: false })
+  difficultyLevel?: number;
+
+  @ApiProperty({ description: 'Distance to the urban center in meters, places only', required: false })
+  distanceMeters?: number;
+
+  @ApiProperty({ description: 'Id of the current user review for this item', required: false })
+  userReview?: string;
 }
 
 export class HomeDataDto {

@@ -7,6 +7,7 @@ import { Lodging, LodgingImage } from '../lodgings/entities';
 import { Restaurant, RestaurantImage } from '../restaurants/entities';
 import { Experience, ExperienceImage } from '../experiences/entities';
 import { ImageResource } from '../core/entities';
+import { Review } from '../reviews/entities';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ImageResource } from '../core/entities';
       Experience,
       ExperienceImage,
       ImageResource,
+      Review,
     ]),
   ],
   controllers: [HomeController],
