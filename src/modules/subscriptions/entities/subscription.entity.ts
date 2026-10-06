@@ -6,6 +6,8 @@ import { Payment } from './payment.entity';
 
 export type SubscriptionStatus = 'pending' | 'active' | 'canceled' | 'past_due' | 'expired';
 export type EntityType = 'lodging' | 'restaurant' | 'commerce' | 'transport' | 'guide' | 'experience';
+/** Freemium: Premium includes accompaniment from the Binntu team (follow-up queue in the admin). */
+export type AssistanceStatus = 'none' | 'pending' | 'contacted' | 'completed';
 
 @Entity({ name: 'subscriptions' })
 export class Subscription {
@@ -59,6 +61,22 @@ export class Subscription {
 
   @Column('timestamp', { nullable: true, name: 'canceled_at' })
   canceledAt: Date | null;
+
+  @Column('varchar', { length: 20, name: 'assistance_status', default: 'none' })
+  assistanceStatus: AssistanceStatus;
+
+  /** Bought through "Registro asistido": paid while the business was still a draft. */
+  @Column('boolean', { name: 'assisted_onboarding', default: false })
+  assistedOnboarding: boolean;
+
+  @Column('text', { name: 'assistance_notes', nullable: true })
+  assistanceNotes: string | null;
+
+  @Column('uuid', { name: 'assisted_by_id', nullable: true })
+  assistedById: string | null;
+
+  @Column('timestamptz', { name: 'assistance_updated_at', nullable: true })
+  assistanceUpdatedAt: Date | null;
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * TIMESTAMPS

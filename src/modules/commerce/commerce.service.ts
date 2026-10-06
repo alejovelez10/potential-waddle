@@ -29,6 +29,8 @@ import { TermsService } from '../terms/services';
 import { TermsTypeEnum } from '../terms/interfaces';
 import { isTermsEnforcementEnabled } from '../terms/utils';
 import { DocumentService } from '../documents/services';
+import { shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
+import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
 import { DocumentEntityType } from '../documents/enums';
 import {
@@ -66,16 +68,14 @@ export class CommerceService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly verificationService: VerificationService,
     private readonly translationResolver: TranslationResolverService,
   ) {}
 
   async findAll({ filters }: CommerceFindAllParams = {}) {
     const { where, order } = generateCommerceQueryFiltersAndSort(filters);
 
-    // 3-state gating: status='published' + isPublic=true + active subscription.
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('commerce');
-    if (subscribedIds.length === 0) return [];
-
+    // Freemium gating: status='published' + isPublic=true (no subscription required).
     const commerces = await this.commerceRepository.find({
       relations: {
         town: { department: true },
@@ -83,7 +83,7 @@ export class CommerceService {
         images: { imageResource: true },
         user: true,
       },
-      where: { ...where, id: In(subscribedIds), status: 'published', isPublic: true },
+      where: { ...where, status: 'published', isPublic: true },
       order,
     });
 
@@ -178,11 +178,8 @@ export class CommerceService {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateCommerceQueryFiltersAndSort(filters);
 
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('commerce');
-    // Sin early-return: aunque no haya suscripciones, los forced_public deben mostrarse.
-
-    // Obtener commerces y reviews del usuario en paralelo
-    const [commerces, userReviews] = await Promise.all([
+    // Obtener commerces, reviews del usuario y negocios Premium en paralelo
+    const [commerces, userReviews, premiumIds] = await Promise.all([
       this.commerceRepository.find({
         relations: {
           town: { department: true },
@@ -190,13 +187,10 @@ export class CommerceService {
           images: { imageResource: true },
           user: true,
         },
-        where:
-          subscribedIds.length > 0
-            ? [
-                { ...where, isPublic: true, status: 'published', id: In(subscribedIds) },
-                { ...where, forcedPublic: true },
-              ]
-            : [{ ...where, forcedPublic: true }],
+        where: [
+          { ...where, isPublic: true, status: 'published' },
+          { ...where, forcedPublic: true },
+        ],
         order,
       }),
       user
@@ -205,22 +199,32 @@ export class CommerceService {
             userId: user.id,
           })
         : Promise.resolve<Review[]>([]),
+      this.subscriptionsService.getPremiumIdSet('commerce'),
     ]);
 
     let sortedCommerces = commerces;
     if (shouldRandomize) {
       sortedCommerces = commerces.sort(() => Math.random() - 0.5);
     }
+    // Premium gets more exposure on the default ordering (freemium)
+    if (shouldRankPremiumFirst(filters?.sortBy)) {
+      sortedCommerces = sortPremiumFirst(sortedCommerces, premiumIds);
+    }
 
     // Batch-load translations once for all commerces (N+1 guard — zero AI at request time)
     let translationsMap: Map<string, Record<string, string>> = new Map();
     let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && sortedCommerces.length) {
-      translationsMap = await this.translationResolver.batchLoad('commerce', sortedCommerces.map(c => c.id), locale);
+      translationsMap = await this.translationResolver.batchLoad(
+        'commerce',
+        sortedCommerces.map(c => c.id),
+        locale,
+      );
       const categoryIds = [...new Set(sortedCommerces.flatMap(c => (c.categories ?? []).map(cat => cat.id)))];
       categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
+    const verifiedIds = await this.verificationService.getVerifiedIdSet('commerce');
     return sortedCommerces.map(commerce => {
       const userReview = userReviews.find(r => r.commerce?.id === commerce.id);
       const base =
@@ -233,7 +237,10 @@ export class CommerceService {
           categoryTranslations,
         );
       }
-      return new CommerceIndexDto(base as Commerce, userReview?.id);
+      const dto = new CommerceIndexDto(base as Commerce, userReview?.id);
+      dto.isPremium = premiumIds.has(commerce.id);
+      dto.isVerified = verifiedIds.has(commerce.id);
+      return dto;
     });
   }
 
@@ -327,7 +334,7 @@ export class CommerceService {
 
   // ------------------------------------------------------------------------------------------------
   // Submit commerce for review (owner action). Mirror of LodgingsService.submitForReview.
-  // Three independent gates with distinct errorCodes (INCOMPLETE / TERMS_NOT_ACCEPTED / DOCS_INCOMPLETE).
+  // Two independent gates with distinct errorCodes (INCOMPLETE / TERMS_NOT_ACCEPTED). Docs only gate verification.
   // ------------------------------------------------------------------------------------------------
   async submitForReview({ identifier, user }: { identifier: string; user: User }) {
     const relations: FindOptionsRelations<Commerce> = {
@@ -371,13 +378,6 @@ export class CommerceService {
         errorCode: 'TERMS_NOT_ACCEPTED',
         termsType: 'commerce',
         activeTermsId: context.termsStatus.activeTermsId ?? null,
-      });
-    }
-
-    if (context.docsStatus.state === 'incompletos') {
-      throw new BadRequestException({
-        errorCode: 'DOCS_INCOMPLETE',
-        docsStatus: context.docsStatus,
       });
     }
 
@@ -508,8 +508,16 @@ export class CommerceService {
 
     if (locale !== 'es') {
       const [categoryTranslations, facilityTranslations] = await Promise.all([
-        this.translationResolver.batchLoad('category', (commerce.categories ?? []).map(c => c.id), locale),
-        this.translationResolver.batchLoad('facility', (commerce.facilities ?? []).map(f => f.id), locale),
+        this.translationResolver.batchLoad(
+          'category',
+          (commerce.categories ?? []).map(c => c.id),
+          locale,
+        ),
+        this.translationResolver.batchLoad(
+          'facility',
+          (commerce.facilities ?? []).map(f => f.id),
+          locale,
+        ),
       ]);
       (base as Commerce).categories = this.translationResolver.overlayCollection(
         commerce.categories ?? [],
@@ -521,7 +529,10 @@ export class CommerceService {
       );
     }
 
-    return new CommerceFullDto(base as Commerce, userReview?.id);
+    const dto = new CommerceFullDto(base as Commerce, userReview?.id);
+    (dto as any).isPremium = await this.subscriptionsService.isPremium('commerce', commerce.id);
+    (dto as any).isVerified = await this.verificationService.isVerified('commerce', commerce.id);
+    return dto;
   }
 
   // ------------------------------------------------------------------------------------------------
@@ -733,6 +744,14 @@ export class CommerceService {
     });
 
     if (!commerce) throw new NotFoundException('Commerce not found');
+
+    // Freemium photo capacity (Free 10 / Premium 30)
+    await this.subscriptionsService.assertPhotoCapacity(
+      'commerce',
+      commerce.id,
+      commerce.images?.length ?? 0,
+      files?.length ?? 0,
+    );
 
     try {
       // Process each file in the array

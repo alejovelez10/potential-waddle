@@ -8,6 +8,7 @@ import { Restaurant, RestaurantImage } from '../restaurants/entities';
 import { Experience, ExperienceImage } from '../experiences/entities';
 import { ImageResource } from '../core/entities';
 import { Review } from '../reviews/entities';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { Review } from '../reviews/entities';
       ImageResource,
       Review,
     ]),
+    SubscriptionsModule,
   ],
   controllers: [HomeController],
   providers: [HomeService],

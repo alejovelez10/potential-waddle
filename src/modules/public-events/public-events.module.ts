@@ -1,3 +1,4 @@
+import { CommonModule } from '../common/common.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PublicEventsService } from './public-events.service';
@@ -9,7 +10,11 @@ import { Town } from '../towns/entities';
 import { User } from '../users/entities';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PublicEvent, PublicEventImage, ImageResource, Town, User]), CloudinaryModule],
+  imports: [
+    CommonModule,
+    TypeOrmModule.forFeature([PublicEvent, PublicEventImage, ImageResource, Town, User]),
+    CloudinaryModule,
+  ],
   controllers: [PublicEventsController],
   providers: [PublicEventsService],
   exports: [PublicEventsService],

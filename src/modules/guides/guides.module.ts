@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { CommonModule } from '../common/common.module';
+import { VerificationModule } from '../verification/verification.module';
 import { GuidesService } from './guides.service';
 import { GuidesController } from './guides.controller';
 import { User } from '../users/entities';
@@ -19,6 +21,8 @@ import { TranslationsModule } from '../translations/translations.module';
   controllers: [GuidesController],
   providers: [GuidesService],
   imports: [
+    CommonModule,
+    VerificationModule,
     TypeOrmModule.forFeature([Guide, Category, Town, User, ImageResource, GuideImage]),
     CloudinaryModule,
     ReviewsModule,

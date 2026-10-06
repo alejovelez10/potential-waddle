@@ -170,12 +170,12 @@ export function computeGuideCompletion(
 
   const infoOK = info.infoPercentage >= 80 && info.infoCriticalSatisfied;
   const termsOK = context.termsStatus.state !== 'pendientes';
-  const docsOK = context.docsStatus.state !== 'incompletos';
 
   return {
     ...base,
     termsStatus: context.termsStatus,
     docsStatus: context.docsStatus,
-    readyToSubmit: infoOK && termsOK && docsOK,
+    // Docs are NOT part of the publish gate (freemium) — they only gate the Verified seal.
+    readyToSubmit: infoOK && termsOK,
   };
 }

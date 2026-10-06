@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpStatus, NotImplementedException, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { SuperAdmin } from '../../auth/decorators';
 
 import { SwaggerTags } from 'src/config';
 import { CreateLanguageDto } from '../dto';
@@ -13,6 +14,7 @@ export class LanguagesController {
   // * CREATE NEW LANGUAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @SuperAdmin()
   create(@Body() createLanguageDto: CreateLanguageDto) {
     return this.languagesService.create(createLanguageDto);
   }
@@ -36,6 +38,7 @@ export class LanguagesController {
   // * UPDATE LANGUAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @SuperAdmin()
   @ApiOperation({ summary: 'This endpoint is currently disabled' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'This endpoint is disabled' })
   update() {
@@ -45,6 +48,7 @@ export class LanguagesController {
   // * DELETE LANGUAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @SuperAdmin()
   @ApiOperation({ summary: 'This endpoint is currently disabled' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'This endpoint is disabled' })
   remove() {

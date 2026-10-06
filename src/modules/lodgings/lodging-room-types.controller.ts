@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOkResponse, ApiBadRequestResponse, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 import { SwaggerTags } from 'src/config';
 import { LodgingRoomTypesService } from './lodging-room-types.service';
@@ -25,6 +26,7 @@ export class LodgingRoomTypesController {
   constructor(private readonly lodgingRoomTypesService: LodgingRoomTypesService) {}
 
   @Post()
+  @EntityAccess('manage', 'lodging', { param: 'lodgingId' })
   @ApiOkResponse({ description: 'Room type created successfully' })
   @ApiBadRequestResponse({ description: 'Bad request' })
   create(
@@ -48,6 +50,7 @@ export class LodgingRoomTypesController {
   }
 
   @Patch(':id')
+  @EntityAccess('manage', 'lodging_room_type', { param: 'id' })
   @ApiOkResponse({ description: 'Room type updated successfully' })
   @ApiBadRequestResponse({ description: 'Bad request' })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() updateLodgingRoomTypeDto: UpdateLodgingRoomTypeDto) {
@@ -55,6 +58,7 @@ export class LodgingRoomTypesController {
   }
 
   @Delete(':id')
+  @EntityAccess('manage', 'lodging_room_type', { param: 'id' })
   @ApiOkResponse({ description: 'Room type deleted successfully' })
   @ApiBadRequestResponse({ description: 'Room type not found' })
   remove(@Param('id', ParseUUIDPipe) id: string) {
@@ -62,6 +66,7 @@ export class LodgingRoomTypesController {
   }
 
   @Delete(':id/permanent')
+  @EntityAccess('manage', 'lodging_room_type', { param: 'id' })
   @ApiOkResponse({ description: 'Room type permanently deleted successfully' })
   @ApiBadRequestResponse({ description: 'Room type not found' })
   delete(@Param('id', ParseUUIDPipe) id: string) {
@@ -73,6 +78,7 @@ export class LodgingRoomTypesController {
   // * ----------------------------------------------------------------------------------------------------------------
 
   @Post(':id/upload-images')
+  @EntityAccess('manage', 'lodging_room_type', { param: 'id' })
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -102,6 +108,7 @@ export class LodgingRoomTypesController {
   }
 
   @Delete(':id/images/:imageId')
+  @EntityAccess('manage', 'lodging_room_type', { param: 'id' })
   @ApiOkResponse({ description: 'Image deleted successfully' })
   @ApiBadRequestResponse({ description: 'Image not found' })
   deleteImage(@Param('id', ParseUUIDPipe) id: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -109,6 +116,7 @@ export class LodgingRoomTypesController {
   }
 
   @Patch(':id/images/reorder')
+  @EntityAccess('manage', 'lodging_room_type', { param: 'id' })
   @ApiOkResponse({ description: 'Images reordered successfully' })
   @ApiBadRequestResponse({ description: 'Error reordering images' })
   reorderImages(@Param('id', ParseUUIDPipe) id: string, @Body() reorderDto: ReorderImagesDto) {

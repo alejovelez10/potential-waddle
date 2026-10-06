@@ -9,6 +9,7 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { SuperAdmin } from '../auth/decorators';
 
 import { FileDto } from './dto';
 import { FileSheetsEnum } from './enums';
@@ -17,6 +18,7 @@ import { SeedsService } from './seeds.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('seeds')
+@SuperAdmin()
 @ApiTags(SwaggerTags.Seeds)
 export class SeedsController {
   constructor(private readonly seedsService: SeedsService) {}

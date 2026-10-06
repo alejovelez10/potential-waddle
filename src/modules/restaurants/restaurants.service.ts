@@ -32,6 +32,8 @@ import { TermsService } from '../terms/services';
 import { TermsTypeEnum } from '../terms/interfaces';
 import { isTermsEnforcementEnabled } from '../terms/utils';
 import { DocumentService } from '../documents/services';
+import { shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
+import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
 import { DocumentEntityType } from '../documents/enums';
 import {
@@ -68,19 +70,17 @@ export class RestaurantsService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly verificationService: VerificationService,
     private readonly translationResolver: TranslationResolverService,
   ) {}
 
   async findAll({ filters }: RestaurantFindAllParams = {}) {
     const { where, order } = generateRestaurantQueryFiltersAndSort(filters);
 
-    // 3-state gating: status='published' + isPublic=true + active subscription.
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('restaurant');
-    if (subscribedIds.length === 0) return [];
-
+    // Freemium gating: status='published' + isPublic=true (no subscription required).
     const restaurants = await this.restaurantRepository.find({
       relations: { town: { department: true }, categories: { icon: true }, images: { imageResource: true } },
-      where: { ...where, id: In(subscribedIds), status: 'published', isPublic: true },
+      where: { ...where, status: 'published', isPublic: true },
       order,
     });
 
@@ -178,21 +178,15 @@ export class RestaurantsService {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateRestaurantQueryFiltersAndSort(filters);
 
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('restaurant');
-    // Sin early-return: aunque no haya suscripciones, los forced_public deben mostrarse.
-
-    // Obtener restaurants y reviews del usuario en paralelo
-    const [restaurants, userReviews] = await Promise.all([
+    // Obtener restaurants, reviews del usuario y negocios Premium en paralelo
+    const [restaurants, userReviews, premiumIds] = await Promise.all([
       this.restaurantRepository.find({
         relations: { town: { department: true }, categories: { icon: true }, images: { imageResource: true } },
         order,
-        where:
-          subscribedIds.length > 0
-            ? [
-                { ...where, isPublic: true, status: 'published', id: In(subscribedIds) },
-                { ...where, forcedPublic: true },
-              ]
-            : [{ ...where, forcedPublic: true }],
+        where: [
+          { ...where, isPublic: true, status: 'published' },
+          { ...where, forcedPublic: true },
+        ],
       }),
       user
         ? this.entityReviewsService.getUserReviews({
@@ -200,20 +194,29 @@ export class RestaurantsService {
             userId: user.id,
           })
         : Promise.resolve<Review[]>([]),
+      this.subscriptionsService.getPremiumIdSet('restaurant'),
     ]);
 
     let sortedRestaurants = restaurants;
     if (shouldRandomize) {
       sortedRestaurants = restaurants.sort(() => Math.random() - 0.5);
     }
+    // Premium gets more exposure on the default ordering (freemium)
+    if (shouldRankPremiumFirst(filters?.sortBy)) {
+      sortedRestaurants = sortPremiumFirst(sortedRestaurants, premiumIds);
+    }
 
-    // Check for active promotions for each restaurant
+    // Promotions are a Premium benefit: only Premium restaurants expose them
     const restaurantsWithPromotions = await Promise.all(
       sortedRestaurants.map(async restaurant => {
-        const hasPromotions = await this.promotionsService.hasActivePromotions(restaurant.id, 'restaurant');
-        const latestPromotion = await this.promotionsService.getLatestActivePromotion(restaurant.id, 'restaurant');
+        const isPremium = premiumIds.has(restaurant.id);
+        const hasPromotions =
+          isPremium && (await this.promotionsService.hasActivePromotions(restaurant.id, 'restaurant'));
+        const latestPromotion = isPremium
+          ? await this.promotionsService.getLatestActivePromotion(restaurant.id, 'restaurant')
+          : null;
         const userReview = userReviews.find(r => r.restaurant?.id === restaurant.id);
-        return { restaurant, hasPromotions, latestPromotion, userReview };
+        return { restaurant, hasPromotions, latestPromotion, userReview, isPremium };
       }),
     );
 
@@ -221,12 +224,17 @@ export class RestaurantsService {
     let translationsMap: Map<string, Record<string, string>> = new Map();
     let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && sortedRestaurants.length) {
-      translationsMap = await this.translationResolver.batchLoad('restaurant', sortedRestaurants.map(r => r.id), locale);
+      translationsMap = await this.translationResolver.batchLoad(
+        'restaurant',
+        sortedRestaurants.map(r => r.id),
+        locale,
+      );
       const categoryIds = [...new Set(sortedRestaurants.flatMap(r => (r.categories ?? []).map(c => c.id)))];
       categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
-    return restaurantsWithPromotions.map(({ restaurant, hasPromotions, latestPromotion, userReview }) => {
+    const verifiedIds = await this.verificationService.getVerifiedIdSet('restaurant');
+    return restaurantsWithPromotions.map(({ restaurant, hasPromotions, latestPromotion, userReview, isPremium }) => {
       const base =
         locale !== 'es'
           ? this.translationResolver.overlay({ ...restaurant }, translationsMap.get(restaurant.id) ?? {})
@@ -240,6 +248,8 @@ export class RestaurantsService {
       const dto = new RestaurantIndexDto({ data: base as Restaurant, userReview: userReview?.id });
       (dto as any).hasPromotions = hasPromotions;
       (dto as any).latestPromotionValue = latestPromotion?.value;
+      dto.isPremium = isPremium;
+      dto.isVerified = verifiedIds.has(restaurant.id);
       return dto;
     });
   }
@@ -250,9 +260,6 @@ export class RestaurantsService {
   async findPublicFullInfoRestaurants({ filters }: RestaurantFindAllParams = {}) {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateRestaurantQueryFiltersAndSort(filters);
-
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('restaurant');
-    if (subscribedIds.length === 0) return [];
 
     let restaurants = await this.restaurantRepository.find({
       relations: {
@@ -269,7 +276,6 @@ export class RestaurantsService {
         ...where,
         isPublic: true,
         status: 'published',
-        id: In(subscribedIds),
       },
     });
 
@@ -418,13 +424,6 @@ export class RestaurantsService {
       });
     }
 
-    if (context.docsStatus.state === 'incompletos') {
-      throw new BadRequestException({
-        errorCode: 'DOCS_INCOMPLETE',
-        docsStatus: context.docsStatus,
-      });
-    }
-
     restaurant.status = 'pending_review';
     restaurant.submittedAt = new Date();
     restaurant.rejectionReason = null;
@@ -528,11 +527,12 @@ export class RestaurantsService {
       restaurant = await this.restaurantRepository.findOne({ where: { slug, status: 'published' }, relations });
     if (!restaurant) throw new NotFoundException('Restaurant not found');
 
-    // Check for active promotions and user review in parallel
+    // Promotions are a Premium benefit: only Premium restaurants expose them
+    const isPremium = await this.subscriptionsService.isPremium('restaurant', restaurant.id);
     const [hasPromotions, latestPromotion, activePromotions, userReview] = await Promise.all([
-      this.promotionsService.hasActivePromotions(restaurant.id, 'restaurant'),
-      this.promotionsService.getLatestActivePromotion(restaurant.id, 'restaurant'),
-      this.promotionsService.getActivePromotions(restaurant.id, 'restaurant'),
+      isPremium ? this.promotionsService.hasActivePromotions(restaurant.id, 'restaurant') : false,
+      isPremium ? this.promotionsService.getLatestActivePromotion(restaurant.id, 'restaurant') : null,
+      isPremium ? this.promotionsService.getActivePromotions(restaurant.id, 'restaurant') : [],
       user
         ? this.entityReviewsService.findUserReview({
             entityType: ReviewDomainsEnum.RESTAURANTS,
@@ -553,8 +553,16 @@ export class RestaurantsService {
 
     if (locale !== 'es') {
       const [categoryTranslations, facilityTranslations] = await Promise.all([
-        this.translationResolver.batchLoad('category', (restaurant.categories ?? []).map(c => c.id), locale),
-        this.translationResolver.batchLoad('facility', (restaurant.facilities ?? []).map(f => f.id), locale),
+        this.translationResolver.batchLoad(
+          'category',
+          (restaurant.categories ?? []).map(c => c.id),
+          locale,
+        ),
+        this.translationResolver.batchLoad(
+          'facility',
+          (restaurant.facilities ?? []).map(f => f.id),
+          locale,
+        ),
       ]);
       (base as Restaurant).categories = this.translationResolver.overlayCollection(
         restaurant.categories ?? [],
@@ -570,6 +578,8 @@ export class RestaurantsService {
     (dto as any).hasPromotions = hasPromotions;
     (dto as any).latestPromotionValue = latestPromotion?.value;
     (dto as any).activePromotions = activePromotions;
+    (dto as any).isPremium = isPremium;
+    (dto as any).isVerified = await this.verificationService.isVerified('restaurant', restaurant.id);
 
     return dto;
   }
@@ -665,9 +675,7 @@ export class RestaurantsService {
         : undefined;
 
     const derivedPrices =
-      updateRestaurantDto.priceRanges !== undefined
-        ? deriveLowestHighest(updateRestaurantDto.priceRanges)
-        : undefined;
+      updateRestaurantDto.priceRanges !== undefined ? deriveLowestHighest(updateRestaurantDto.priceRanges) : undefined;
 
     await this.restaurantRepository.save({
       id: restaurant.id,
@@ -787,6 +795,14 @@ export class RestaurantsService {
     });
 
     if (!restaurant) throw new NotFoundException('Restaurant not found');
+
+    // Freemium photo capacity (Free 10 / Premium 30)
+    await this.subscriptionsService.assertPhotoCapacity(
+      'restaurant',
+      restaurant.id,
+      restaurant.images?.length ?? 0,
+      files?.length ?? 0,
+    );
 
     try {
       // Process each file in the array

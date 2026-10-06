@@ -14,6 +14,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 import { SwaggerTags } from 'src/config';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -34,6 +35,7 @@ import { RestaurantsService } from './restaurants.service';
 import { RestaurantFilters, RestaurantListApiQueries } from './decorators';
 import { RestaurantVectorDto } from './dto/restaurant-vector.dto';
 import { GetUser } from '../common/decorators';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { RequestLocale } from '../translations/request-locale.decorator';
@@ -41,7 +43,10 @@ import { RequestLocale } from '../translations/request-locale.decorator';
 @Controller(SwaggerTags.Restaurants)
 @ApiTags(SwaggerTags.Restaurants)
 export class RestaurantsController {
-  constructor(private readonly restaurantsService: RestaurantsService) {}
+  constructor(
+    private readonly restaurantsService: RestaurantsService,
+    private readonly ownership: EntityOwnershipResolver,
+  ) {}
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * GET ALL RESTAURANTS
@@ -131,7 +136,8 @@ export class RestaurantsController {
   @Post('admin/:identifier/approve')
   @Auth()
   @ApiOkResponse({ description: 'Restaurant approved', type: RestaurantDto })
-  approve(@Param('identifier') identifier: string) {
+  async approve(@Param('identifier') identifier: string, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('restaurant', identifier, user);
     return this.restaurantsService.approve({ identifier });
   }
 
@@ -141,7 +147,8 @@ export class RestaurantsController {
   @Post('admin/:identifier/reject')
   @Auth()
   @ApiOkResponse({ description: 'Restaurant rejected', type: RestaurantDto })
-  reject(@Param('identifier') identifier: string, @Body() body: { reason: string }) {
+  async reject(@Param('identifier') identifier: string, @Body() body: { reason: string }, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('restaurant', identifier, user);
     return this.restaurantsService.reject({ identifier, reason: body.reason });
   }
 
@@ -169,7 +176,7 @@ export class RestaurantsController {
   // * UPDATE RESTAURANT
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier')
-  @OptionalAuth()
+  @EntityAccess('manage', 'restaurant')
   @ApiOkResponse({ description: 'Restaurant Updated', type: RestaurantDto })
   update(@Param('identifier') identifier: string, @Body() updateRestaurantDto: UpdateRestaurantDto) {
     return this.restaurantsService.update(identifier, updateRestaurantDto);
@@ -179,7 +186,7 @@ export class RestaurantsController {
   // * DELETE RESTAURANT
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier')
-  @OptionalAuth()
+  @EntityAccess('manage', 'restaurant')
   @ApiOkResponse({ description: 'Restaurant Deleted' })
   deleteRestaurant(@Param('identifier') identifier: string) {
     return this.restaurantsService.delete(identifier);
@@ -189,7 +196,7 @@ export class RestaurantsController {
   // * BULK DELETE RESTAURANTS (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/bulk-delete')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'restaurant', { bodyIds: 'ids' })
   @ApiOkResponse({ description: 'Count of restaurants deleted', schema: { example: { deleted: 4 } } })
   bulkDelete(@Body() dto: BulkDeleteRestaurantsDto) {
     return this.restaurantsService.bulkDelete(dto.ids);
@@ -199,7 +206,7 @@ export class RestaurantsController {
   // * UPDATE USER IN RESTAURANT
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/users/:userId')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'restaurant')
   @ApiOkResponse({ description: 'User Updated in Restaurant', type: RestaurantDto })
   @ApiBadRequestResponse({ description: 'The user cannot be updated in the restaurant' })
   updateUser(@Param('identifier') identifier: string, @Param('userId', ParseUUIDPipe) userId: string) {
@@ -210,7 +217,7 @@ export class RestaurantsController {
   // * UPDATE RESTAURANT GOOGLE MAPS REVIEWS VISIBILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/show-google-maps-reviews')
-  @OptionalAuth()
+  @EntityAccess('manage', 'restaurant')
   @ApiOkResponse({ description: 'Restaurant Google Maps Reviews Visibility Updated', type: RestaurantDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateShowGoogleMapsReviews(
@@ -224,7 +231,7 @@ export class RestaurantsController {
   // * UPDATE RESTAURANT VISIBILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/visibility')
-  @OptionalAuth()
+  @EntityAccess('manage', 'restaurant')
   @ApiOkResponse({ description: 'Restaurant Visibility Updated', type: RestaurantDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateVisibility(@Param('identifier') identifier: string, @Body() body: { isPublic: boolean }) {
@@ -235,7 +242,7 @@ export class RestaurantsController {
   // * UPLOAD RESTAURANT IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/upload-images')
-  @OptionalAuth()
+  @EntityAccess('manage', 'restaurant')
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -275,7 +282,7 @@ export class RestaurantsController {
   // * DELETE RESTAURANT IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier/images/:imageId')
-  @OptionalAuth()
+  @EntityAccess('manage', 'restaurant')
   @ApiOkResponse({ description: 'Image Deleted' })
   @ApiBadRequestResponse({ description: 'The image cannot be deleted' })
   deleteImage(@Param('identifier') identifier: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -286,7 +293,7 @@ export class RestaurantsController {
   // * REORDER RESTAURANT IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/images/reorder')
-  @OptionalAuth()
+  @EntityAccess('manage', 'restaurant')
   @ApiOkResponse({ description: 'Images Reordered' })
   @ApiBadRequestResponse({ description: 'The images cannot be reordered' })
   reorderImages(@Param('identifier') identifier: string, @Body() reorderImagesDto: ReorderImagesDto) {

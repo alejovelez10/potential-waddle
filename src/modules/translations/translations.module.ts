@@ -1,3 +1,4 @@
+import { CommonModule } from '../common/common.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -45,6 +46,7 @@ import { Guide } from '../guides/entities/guide.entity';
  */
 @Module({
   imports: [
+    CommonModule,
     TypeOrmModule.forFeature([
       EntityTranslation,
       // Owner entities required by IDOR ownership resolver

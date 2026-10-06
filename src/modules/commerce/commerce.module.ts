@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { CommonModule } from '../common/common.module';
+import { VerificationModule } from '../verification/verification.module';
 import { CommerceService } from './commerce.service';
 import { CommerceController } from './commerce.controller';
 import { Commerce, CommerceProduct, CommerceProductImage } from './entities';
@@ -21,6 +23,8 @@ import { TranslationsModule } from '../translations/translations.module';
   controllers: [CommerceController, CommerceProductsController],
   providers: [CommerceService, CommerceProductsService],
   imports: [
+    CommonModule,
+    VerificationModule,
     TypeOrmModule.forFeature([
       Commerce,
       CommerceProduct,

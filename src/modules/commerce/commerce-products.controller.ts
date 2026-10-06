@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOkResponse, ApiBadRequestResponse, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 import { SwaggerTags } from 'src/config';
 import { CommerceProductsService } from './commerce-products.service';
@@ -25,6 +26,7 @@ export class CommerceProductsController {
   constructor(private readonly productsService: CommerceProductsService) {}
 
   @Post()
+  @EntityAccess('manage', 'commerce', { param: 'commerceId' })
   @ApiOkResponse({ description: 'Product created successfully' })
   @ApiBadRequestResponse({ description: 'Bad request' })
   async create(@Param('commerceId', ParseUUIDPipe) commerceId: string, @Body() createDto: CreateCommerceProductDto) {
@@ -48,6 +50,7 @@ export class CommerceProductsController {
   }
 
   @Patch(':id')
+  @EntityAccess('manage', 'commerce_product', { param: 'id' })
   @ApiOkResponse({ description: 'Product updated successfully' })
   @ApiBadRequestResponse({ description: 'Bad request' })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() updateDto: UpdateCommerceProductDto) {
@@ -58,6 +61,7 @@ export class CommerceProductsController {
   }
 
   @Delete(':id')
+  @EntityAccess('manage', 'commerce_product', { param: 'id' })
   @ApiOkResponse({ description: 'Product deleted successfully' })
   @ApiBadRequestResponse({ description: 'Product not found' })
   remove(@Param('id', ParseUUIDPipe) id: string) {
@@ -69,6 +73,7 @@ export class CommerceProductsController {
   // * ----------------------------------------------------------------------------------------------------------------
 
   @Post(':id/upload-images')
+  @EntityAccess('manage', 'commerce_product', { param: 'id' })
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -99,6 +104,7 @@ export class CommerceProductsController {
   }
 
   @Delete(':id/images/:imageId')
+  @EntityAccess('manage', 'commerce_product', { param: 'id' })
   @ApiOkResponse({ description: 'Image deleted successfully' })
   @ApiBadRequestResponse({ description: 'Image not found' })
   deleteImage(@Param('id', ParseUUIDPipe) id: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -106,6 +112,7 @@ export class CommerceProductsController {
   }
 
   @Patch(':id/images/reorder')
+  @EntityAccess('manage', 'commerce_product', { param: 'id' })
   @ApiOkResponse({ description: 'Images reordered successfully' })
   @ApiBadRequestResponse({ description: 'Error reordering images' })
   reorderImages(@Param('id', ParseUUIDPipe) id: string, @Body() reorderDto: ReorderImagesDto) {

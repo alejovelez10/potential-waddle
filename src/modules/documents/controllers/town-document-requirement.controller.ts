@@ -8,19 +8,26 @@ import {
   TownDocumentRequirementResponseDto,
 } from '../dto';
 import { Auth } from '../../auth/decorators';
+import { GetUser } from '../../common/decorators';
+import { EntityOwnershipResolver } from '../../common/services/entity-ownership.resolver';
+import { User } from '../../users/entities';
 import { DocumentEntityType } from '../enums';
 
 @ApiTags('Town Document Requirements')
 @Controller('town-document-requirements')
 export class TownDocumentRequirementController {
-  constructor(private readonly requirementService: TownDocumentRequirementService) {}
+  constructor(
+    private readonly requirementService: TownDocumentRequirementService,
+    private readonly ownership: EntityOwnershipResolver,
+  ) {}
 
   @Post()
   @Auth()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new document requirement' })
   @ApiOkResponse({ type: TownDocumentRequirementResponseDto })
-  create(@Body() createDto: CreateTownDocumentRequirementDto) {
+  create(@Body() createDto: CreateTownDocumentRequirementDto, @GetUser() user: User) {
+    this.ownership.assertCanAdminTown(createDto.townId, user);
     return this.requirementService.create(createDto);
   }
 
@@ -29,7 +36,8 @@ export class TownDocumentRequirementController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Bulk update requirements for a town and entity type' })
   @ApiOkResponse({ type: [TownDocumentRequirementResponseDto] })
-  bulkUpdate(@Body() bulkDto: BulkTownDocumentRequirementDto) {
+  bulkUpdate(@Body() bulkDto: BulkTownDocumentRequirementDto, @GetUser() user: User) {
+    this.ownership.assertCanAdminTown(bulkDto.townId, user);
     return this.requirementService.bulkUpdate(bulkDto);
   }
 
@@ -80,7 +88,13 @@ export class TownDocumentRequirementController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a requirement' })
   @ApiOkResponse({ type: TownDocumentRequirementResponseDto })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() updateDto: UpdateTownDocumentRequirementDto) {
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateDto: UpdateTownDocumentRequirementDto,
+    @GetUser() user: User,
+  ) {
+    const requirement = await this.requirementService.findOne(id);
+    this.ownership.assertCanAdminTown(requirement.townId, user);
     return this.requirementService.update(id, updateDto);
   }
 
@@ -88,7 +102,9 @@ export class TownDocumentRequirementController {
   @Auth()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a requirement' })
-  remove(@Param('id', ParseUUIDPipe) id: string) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User) {
+    const requirement = await this.requirementService.findOne(id);
+    this.ownership.assertCanAdminTown(requirement.townId, user);
     return this.requirementService.remove(id);
   }
 }

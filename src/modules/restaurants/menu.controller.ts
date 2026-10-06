@@ -16,6 +16,7 @@ import { Auth } from '../auth/decorators';
 import { MenuService } from './services/menu.service';
 import { MenuDto } from './dto';
 import { ContentTypes } from '../common/constants';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 @Controller('restaurants/:restaurantId/menus')
 @ApiTags('Restaurant Menus')
@@ -44,8 +45,8 @@ export class MenuController {
   }
 
   @Post('upload')
+  @EntityAccess('manage', 'restaurant', { param: 'restaurantId' })
   @UseGuards(RestaurantMenuAccessGuard)
-  @Auth()
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -62,8 +63,8 @@ export class MenuController {
   }
 
   @Delete(':menuId')
+  @EntityAccess('manage', 'restaurant', { param: 'restaurantId' })
   @UseGuards(RestaurantMenuAccessGuard)
-  @Auth()
   @ApiOkResponse({ description: 'Delete menu' })
   delete(@Param('restaurantId', ParseUUIDPipe) restaurantId: string, @Param('menuId', ParseUUIDPipe) menuId: string) {
     return this.menuService.delete(menuId);

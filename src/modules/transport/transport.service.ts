@@ -27,6 +27,8 @@ import { TermsTypeEnum } from '../terms/interfaces';
 import { computeTransportCompletion } from './utils/compute-transport-completion';
 import { DocumentService } from '../documents/services';
 import { DocumentEntityType } from '../documents/enums';
+import { findPagePremiumFirst, shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
+import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
 import {
   computeLodgingTermsStatus,
@@ -55,6 +57,7 @@ export class TransportService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly verificationService: VerificationService,
   ) {}
 
   // ------------------------------------------------------------------------------------------------
@@ -97,7 +100,9 @@ export class TransportService {
   }
 
   async create(createTransportDto: CreateTransportDto, userId: string) {
-    const { categoryIds, townId, ...restDto } = createTransportDto;
+    // Premium "información ampliada" can't be set on creation (a new transport isn't Premium yet)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { categoryIds, townId, vehicleModel, capacity, services, coverageTownIds, ...restDto } = createTransportDto;
     const categories = categoryIds ? await this.categoryRepo.findBy({ id: In(categoryIds) }) : [];
     const town = townId ? await this.townRepo.findOneBy({ id: townId }) : undefined;
     if (!town) throw new NotFoundException('Town not found');
@@ -129,18 +134,13 @@ export class TransportService {
     const skip = (page - 1) * limit;
     const { where, order } = generateTransportQueryFiltersAndSort(filters);
 
-    // 3-state gating: status='published' + isPublic=true + active subscription.
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('transport');
-    if (subscribedIds.length === 0) {
-      return new TransportListDto({ currentPage: page, pages: 0, count: 0 }, []);
-    }
-
+    // Freemium gating: status='published' + isPublic=true (no subscription required).
     const [transports, count] = await this.transportRepository.findAndCount({
       skip,
       take: limit,
       relations: { categories: { icon: true }, town: { department: true }, user: true },
       order,
-      where: { ...where, id: In(subscribedIds), status: 'published', isPublic: true },
+      where: { ...where, status: 'published', isPublic: true },
     });
 
     return new TransportListDto({ currentPage: page, pages: Math.ceil(count / limit), count }, transports);
@@ -263,24 +263,25 @@ export class TransportService {
     const skip = (page - 1) * limit;
     const { where, order } = generateTransportQueryFiltersAndSort(filters);
 
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('transport');
-    // Sin early-return: aunque no haya suscripciones, los forced_public deben mostrarse.
+    const premiumIds = await this.subscriptionsService.getPremiumIdSet('transport');
+    const verifiedIds = await this.verificationService.getVerifiedIdSet('transport');
+    const listOptions = {
+      skip,
+      take: limit,
+      relations: { categories: { icon: true }, town: { department: true }, user: true },
+      order,
+      where: [
+        { ...where, isPublic: true, status: 'published' as const },
+        { ...where, forcedPublic: true },
+      ],
+    };
 
-    // Obtener transports y reviews del usuario en paralelo
+    // Obtener transports y reviews del usuario en paralelo.
+    // Premium gets more exposure on the default ordering (freemium): rank before paginating.
     const [result, userReviews] = await Promise.all([
-      this.transportRepository.findAndCount({
-        skip,
-        take: limit,
-        relations: { categories: { icon: true }, town: { department: true }, user: true },
-        order,
-        where:
-          subscribedIds.length > 0
-            ? [
-                { ...where, isPublic: true, status: 'published', id: In(subscribedIds) },
-                { ...where, forcedPublic: true },
-              ]
-            : [{ ...where, forcedPublic: true }],
-      }),
+      shouldRankPremiumFirst(filters?.sortBy)
+        ? findPagePremiumFirst(this.transportRepository, listOptions, premiumIds)
+        : this.transportRepository.findAndCount(listOptions),
       user
         ? this.entityReviewsService.getUserReviews({
             entityType: ReviewDomainsEnum.TRANSPORT,
@@ -293,7 +294,10 @@ export class TransportService {
     let transports = _transports;
 
     if (shouldRandomize) {
-      transports = transports.sort(() => Math.random() - 0.5);
+      transports = sortPremiumFirst(
+        transports.sort(() => Math.random() - 0.5),
+        premiumIds,
+      );
     }
 
     return {
@@ -302,7 +306,10 @@ export class TransportService {
       count,
       data: transports.map(transport => {
         const userReview = userReviews.find(r => r.transport?.id === transport.id);
-        return new TransportDto({ data: transport, userReview: userReview?.id });
+        const dto = new TransportDto({ data: transport, userReview: userReview?.id });
+        dto.isPremium = premiumIds.has(transport.id);
+        dto.isVerified = verifiedIds.has(transport.id);
+        return dto;
       }),
     };
   }
@@ -312,6 +319,7 @@ export class TransportService {
       categories: { icon: true },
       town: { department: true },
       user: true,
+      coverageTowns: true,
     };
 
     const transport = await this.transportRepository.findOne({ where: { id: identifier }, relations });
@@ -339,12 +347,16 @@ export class TransportService {
       docsStatus?: LodgingDocsStatus;
     };
 
+    dto.isPremium = await this.subscriptionsService.isPremium('transport', transport.id);
+    dto.isVerified = await this.verificationService.isVerified('transport', transport.id);
+
     const isOwner = !!user && transport.user?.id === user.id;
+    // Public visitors only see the Premium extended info while the transport is Premium
+    if (!dto.isPremium && !isOwner && !user?.isSuperUser) dto.hideExtendedInfo();
     if (isOwner || user?.isSuperUser) {
       const completion = computeTransportCompletion(transport);
       const { termsStatus, docsStatus } = await this.resolveOwnerCompletionContext(transport);
       const termsBlock = isTermsEnforcementEnabled() && termsStatus.state === 'pendientes';
-      const docsBlock = docsStatus.state === 'incompletos';
       dto.status = transport.status;
       dto.submittedAt = transport.submittedAt;
       dto.rejectionReason = transport.rejectionReason;
@@ -355,7 +367,7 @@ export class TransportService {
       dto.infoCriticalSatisfied = completion.infoCriticalSatisfied;
       dto.termsStatus = termsStatus;
       dto.docsStatus = docsStatus;
-      dto.readyToSubmit = completion.readyToSubmit && !termsBlock && !docsBlock;
+      dto.readyToSubmit = completion.readyToSubmit && !termsBlock;
     }
 
     return dto;
@@ -398,13 +410,6 @@ export class TransportService {
         errorCode: 'TERMS_NOT_ACCEPTED',
         termsType: 'transport',
         activeTermsId: context.termsStatus.activeTermsId ?? null,
-      });
-    }
-
-    if (context.docsStatus.state === 'incompletos') {
-      throw new BadRequestException({
-        errorCode: 'DOCS_INCOMPLETE',
-        docsStatus: context.docsStatus,
       });
     }
 
@@ -465,7 +470,19 @@ export class TransportService {
   }
 
   async update(id: string, updateTransportDto: UpdateTransportDto) {
-    const { categoryIds, townId, userId, ...restDto } = updateTransportDto;
+    const { categoryIds, townId, userId, coverageTownIds, ...restDto } = updateTransportDto;
+
+    // Premium "información ampliada" (vehicle, capacity, services, coverage zones)
+    const touchesExtendedInfo =
+      coverageTownIds !== undefined ||
+      restDto.vehicleModel !== undefined ||
+      restDto.capacity !== undefined ||
+      restDto.services !== undefined;
+    if (touchesExtendedInfo) {
+      await this.subscriptionsService.assertPremium('transport', id, 'transport_extended');
+    }
+    const coverageTowns = coverageTownIds ? await this.townRepo.findBy({ id: In(coverageTownIds) }) : undefined;
+
     // Solo resolver entities si el PATCH realmente trae el campo — undefined
     // significa "no tocar", para no destruir relaciones al guardar otros steps.
     const categories = categoryIds ? await this.categoryRepo.findBy({ id: In(categoryIds) }) : undefined;
@@ -489,6 +506,7 @@ export class TransportService {
       ...transport,
       ...restDto,
       ...(categories !== undefined && { categories }),
+      ...(coverageTowns !== undefined && { coverageTowns }),
       town: town || undefined,
       user: user || undefined,
     });

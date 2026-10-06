@@ -9,6 +9,11 @@ export interface UploadFileOptions {
   entityType: string;
   entityId: string;
   folder?: string;
+  /**
+   * Sensitive files (identity/legal documents) must not be cached by shared caches and are
+   * served through short-lived signed URLs (see getSignedReadUrl), never the raw public URL.
+   */
+  isPrivate?: boolean;
 }
 
 export interface UploadedFile {
@@ -51,7 +56,7 @@ export class GcpStorageService {
   }
 
   async uploadFile(options: UploadFileOptions): Promise<UploadedFile> {
-    const { buffer, originalName, mimeType, townSlug, entityType, entityId, folder } = options;
+    const { buffer, originalName, mimeType, townSlug, entityType, entityId, folder, isPrivate } = options;
 
     const bucket = this.storage.bucket(this.bucketName);
 
@@ -76,7 +81,7 @@ export class GcpStorageService {
     await file.save(buffer, {
       metadata: {
         contentType: mimeType,
-        cacheControl: 'public, max-age=31536000',
+        cacheControl: isPrivate ? 'private, max-age=0, no-store' : 'public, max-age=31536000',
       },
     });
 
@@ -95,6 +100,24 @@ export class GcpStorageService {
       gcpPath,
       size: buffer.length,
     };
+  }
+
+  /**
+   * Short-lived V4 signed read URL. Requires service-account credentials with a private key
+   * (GOOGLE_APPLICATION_CREDENTIALS_JSON); returns null when signing is not possible so callers
+   * can fall back.
+   */
+  async getSignedReadUrl(gcpPath: string, expiresInMinutes = 15): Promise<string | null> {
+    try {
+      const [url] = await this.storage
+        .bucket(this.bucketName)
+        .file(gcpPath)
+        .getSignedUrl({ version: 'v4', action: 'read', expires: Date.now() + expiresInMinutes * 60 * 1000 });
+      return url;
+    } catch (error) {
+      this.logger.warn(`Could not sign URL for ${gcpPath}: ${(error as Error).message}`);
+      return null;
+    }
   }
 
   async deleteFile(gcpPath: string): Promise<void> {

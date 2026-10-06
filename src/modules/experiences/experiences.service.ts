@@ -38,6 +38,8 @@ import { TermsService } from '../terms/services';
 import { isTermsEnforcementEnabled } from '../terms/utils';
 import { DocumentService } from '../documents/services';
 import { DocumentEntityType } from '../documents/enums';
+import { shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
+import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
 import {
   computeExperienceCompletion,
@@ -73,6 +75,7 @@ export class ExperiencesService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly verificationService: VerificationService,
     private readonly translationResolver: TranslationResolverService,
   ) {}
 
@@ -82,14 +85,10 @@ export class ExperiencesService {
   async findAll({ filters }: ExperienceFindAllParams = {}): Promise<ExperienceDto[]> {
     const { where, order } = generateExperienceQueryFiltersAndSort(filters);
 
-    // Experiences inherit public gating from their parent guide. So the 3-state
-    // gate runs on the GUIDE (not the experience): guide must be published,
-    // isPublic=true, and subscribed. The experience itself must also be
-    // status='published' + isPublic=true so the owner can hide individual
-    // experiences without unpublishing the guide profile.
-    const subscribedGuideIds = await this.subscriptionsService.getActiveSubscribedEntityIds('guide');
-    if (subscribedGuideIds.length === 0) return [];
-
+    // Experiences inherit public gating from their parent guide: the guide must be
+    // published + isPublic=true (freemium: no subscription required). The experience
+    // itself must also be status='published' + isPublic=true so the owner can hide
+    // individual experiences without unpublishing the guide profile.
     const experiences = await this.experienceRepository.find({
       relations: {
         categories: { icon: true },
@@ -102,7 +101,7 @@ export class ExperiencesService {
         ...where,
         status: 'published',
         isPublic: true,
-        guide: { id: In(subscribedGuideIds), status: 'published', isPublic: true },
+        guide: { status: 'published', isPublic: true },
       },
     });
 
@@ -182,16 +181,16 @@ export class ExperiencesService {
   // ------------------------------------------------------------------------------------------------
   // Find public experiences
   // ------------------------------------------------------------------------------------------------
-  async findPublicExperiences({ filters, user, locale = 'es' }: ExperienceFindAllParams = {}): Promise<ExperienceDto[]> {
+  async findPublicExperiences({ filters, user, locale = 'es' }: ExperienceFindAllParams = {}): Promise<
+    ExperienceDto[]
+  > {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateExperienceQueryFiltersAndSort(filters);
 
     // Gating inherits from guide: see findAll for the full reasoning.
-    const subscribedGuideIds = await this.subscriptionsService.getActiveSubscribedEntityIds('guide');
-    // Sin early-return: aunque no haya suscripciones, los forced_public deben mostrarse.
 
-    // Fetch experiences and user reviews in parallel
-    const [experiences, userReviews] = await Promise.all([
+    // Fetch experiences, user reviews and Premium guides in parallel
+    const [experiences, userReviews, premiumGuideIds] = await Promise.all([
       this.experienceRepository.find({
         relations: {
           categories: { icon: true },
@@ -200,18 +199,15 @@ export class ExperiencesService {
           guide: true,
         },
         order,
-        where:
-          subscribedGuideIds.length > 0
-            ? [
-                {
-                  ...where,
-                  isPublic: true,
-                  status: 'published',
-                  guide: { id: In(subscribedGuideIds), status: 'published', isPublic: true },
-                },
-                { ...where, forcedPublic: true },
-              ]
-            : [{ ...where, forcedPublic: true }],
+        where: [
+          {
+            ...where,
+            isPublic: true,
+            status: 'published',
+            guide: { status: 'published', isPublic: true },
+          },
+          { ...where, forcedPublic: true },
+        ],
       }),
       user
         ? this.entityReviewsService.getUserReviews({
@@ -219,19 +215,31 @@ export class ExperiencesService {
             userId: user.id,
           })
         : Promise.resolve<Review[]>([]),
+      this.subscriptionsService.getPremiumIdSet('guide'),
     ]);
+
+    // Experiences inherit Premium from their guide
+    const premiumIds = new Set(experiences.filter(e => e.guide?.id && premiumGuideIds.has(e.guide.id)).map(e => e.id));
 
     let sortedExperiences = experiences;
     if (shouldRandomize) {
       sortedExperiences = experiences.sort(() => Math.random() - 0.5);
     }
+    // Premium gets more exposure on the default ordering (freemium)
+    if (shouldRankPremiumFirst(filters?.sortBy)) {
+      sortedExperiences = sortPremiumFirst(sortedExperiences, premiumIds);
+    }
 
-    // Check for active promotions for each experience
+    // Promotions are a Premium benefit: only Premium experiences expose them
     const experiencesWithPromotions = await Promise.all(
       sortedExperiences.map(async experience => {
-        const hasPromotions = await this.promotionsService.hasActivePromotions(experience.id, 'experience');
-        const latestPromotion = await this.promotionsService.getLatestActivePromotion(experience.id, 'experience');
-        return { experience, hasPromotions, latestPromotion };
+        const isPremium = premiumIds.has(experience.id);
+        const hasPromotions =
+          isPremium && (await this.promotionsService.hasActivePromotions(experience.id, 'experience'));
+        const latestPromotion = isPremium
+          ? await this.promotionsService.getLatestActivePromotion(experience.id, 'experience')
+          : null;
+        return { experience, hasPromotions, latestPromotion, isPremium };
       }),
     );
 
@@ -239,12 +247,17 @@ export class ExperiencesService {
     let translationsMap: Map<string, Record<string, string>> = new Map();
     let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && sortedExperiences.length) {
-      translationsMap = await this.translationResolver.batchLoad('experience', sortedExperiences.map(e => e.id), locale);
+      translationsMap = await this.translationResolver.batchLoad(
+        'experience',
+        sortedExperiences.map(e => e.id),
+        locale,
+      );
       const categoryIds = [...new Set(sortedExperiences.flatMap(e => (e.categories ?? []).map(c => c.id)))];
       categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
-    return experiencesWithPromotions.map(({ experience, hasPromotions, latestPromotion }) => {
+    const verifiedIds = await this.verificationService.getVerifiedIdSet('experience');
+    return experiencesWithPromotions.map(({ experience, hasPromotions, latestPromotion, isPremium }) => {
       const userReview = userReviews.find(r => r.experience?.id === experience.id);
       const base =
         locale !== 'es'
@@ -259,6 +272,8 @@ export class ExperiencesService {
       const dto = new ExperienceIndexDto({ data: base as Experience, userReview: userReview?.id });
       (dto as any).hasPromotions = hasPromotions;
       (dto as any).latestPromotionValue = latestPromotion?.value;
+      (dto as any).isPremium = isPremium;
+      (dto as any).isVerified = verifiedIds.has(experience.id);
       return dto;
     });
   }
@@ -271,9 +286,6 @@ export class ExperiencesService {
     const { where, order } = generateExperienceQueryFiltersAndSort(filters);
 
     // Gating inherits from guide: see findAll for the full reasoning.
-    const subscribedGuideIds = await this.subscriptionsService.getActiveSubscribedEntityIds('guide');
-    if (subscribedGuideIds.length === 0) return [];
-
     let experiences = await this.experienceRepository.find({
       relations: {
         categories: { icon: true },
@@ -288,7 +300,7 @@ export class ExperiencesService {
         ...where,
         isPublic: true,
         status: 'published',
-        guide: { id: In(subscribedGuideIds), status: 'published', isPublic: true },
+        guide: { status: 'published', isPublic: true },
       },
     });
 
@@ -360,10 +372,15 @@ export class ExperiencesService {
         })
       : null;
 
-    // Check for active promotions
-    const hasPromotions = await this.promotionsService.hasActivePromotions(experience.id, 'experience');
-    const latestPromotion = await this.promotionsService.getLatestActivePromotion(experience.id, 'experience');
-    const activePromotions = await this.promotionsService.getActivePromotions(experience.id, 'experience');
+    // Promotions are a Premium benefit (inherited from the guide): only Premium experiences expose them
+    const isPremium = await this.subscriptionsService.isPremium('experience', experience.id);
+    const hasPromotions = isPremium && (await this.promotionsService.hasActivePromotions(experience.id, 'experience'));
+    const latestPromotion = isPremium
+      ? await this.promotionsService.getLatestActivePromotion(experience.id, 'experience')
+      : null;
+    const activePromotions = isPremium
+      ? await this.promotionsService.getActivePromotions(experience.id, 'experience')
+      : [];
 
     // Load and overlay translations for the requested locale (zero AI at request time)
     const base =
@@ -376,8 +393,16 @@ export class ExperiencesService {
 
     if (locale !== 'es') {
       const [categoryTranslations, facilityTranslations] = await Promise.all([
-        this.translationResolver.batchLoad('category', (experience.categories ?? []).map(c => c.id), locale),
-        this.translationResolver.batchLoad('facility', (experience.facilities ?? []).map(f => f.id), locale),
+        this.translationResolver.batchLoad(
+          'category',
+          (experience.categories ?? []).map(c => c.id),
+          locale,
+        ),
+        this.translationResolver.batchLoad(
+          'facility',
+          (experience.facilities ?? []).map(f => f.id),
+          locale,
+        ),
       ]);
       (base as Experience).categories = this.translationResolver.overlayCollection(
         experience.categories ?? [],
@@ -393,6 +418,8 @@ export class ExperiencesService {
     (dto as any).hasPromotions = hasPromotions;
     (dto as any).latestPromotionValue = latestPromotion?.value;
     (dto as any).activePromotions = activePromotions;
+    (dto as any).isPremium = isPremium;
+    (dto as any).isVerified = await this.verificationService.isVerified('experience', experience.id);
 
     return dto;
   }
@@ -616,6 +643,14 @@ export class ExperiencesService {
     });
 
     if (!experience) throw new NotFoundException('Experience not found');
+
+    // Freemium photo capacity (Free 10 / Premium 30)
+    await this.subscriptionsService.assertPhotoCapacity(
+      'experience',
+      experience.id,
+      experience.images?.length ?? 0,
+      files?.length ?? 0,
+    );
 
     try {
       // Process each file in the array
@@ -912,13 +947,6 @@ export class ExperiencesService {
         errorCode: 'TERMS_NOT_ACCEPTED',
         termsType: 'guide',
         activeTermsId: context.termsStatus.activeTermsId ?? null,
-      });
-    }
-
-    if (context.docsStatus.state === 'incompletos') {
-      throw new BadRequestException({
-        errorCode: 'DOCS_INCOMPLETE',
-        docsStatus: context.docsStatus,
       });
     }
 

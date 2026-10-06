@@ -9,6 +9,7 @@ import { getLodgingSubmittedTemplate } from '../templates/lodging-submitted.temp
 import { getLodgingApprovedTemplate } from '../templates/lodging-approved.template';
 import { getLodgingRejectedTemplate } from '../templates/lodging-rejected.template';
 import { getAdminLodgingPendingTemplate } from '../templates/admin-lodging-pending.template';
+import { getNotificationTemplate, NotificationTemplateParams } from '../templates/notification.template';
 
 @Injectable()
 export class ResendService {
@@ -203,6 +204,54 @@ export class ResendService {
       return true;
     } catch (error) {
       this.logger.error(`Error sending admin lodging pending notification`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Internal alert to ADMIN_NOTIFICATION_EMAIL (freemium flows: verification requests, Premium
+   * assisted onboarding). `path` is appended to FRONTEND_URL for the CTA.
+   */
+  async sendAdminNotification(
+    params: Omit<NotificationTemplateParams, 'eyebrow' | 'ctaUrl'> & { path?: string },
+  ): Promise<boolean> {
+    if (!this.adminNotificationEmail) {
+      this.logger.warn(`ADMIN_NOTIFICATION_EMAIL not set — skipping admin notification "${params.subject}"`);
+      return false;
+    }
+    const { path, ...rest } = params;
+    return this.sendNotification(this.adminNotificationEmail, {
+      ...rest,
+      eyebrow: 'Binntu Admin — Notificación interna',
+      ctaUrl: path ? `${this.frontendUrl}${path}` : undefined,
+    });
+  }
+
+  /** Transactional notice to a business owner (freemium flows). */
+  async sendOwnerNotification(
+    to: string,
+    params: Omit<NotificationTemplateParams, 'eyebrow' | 'ctaUrl'> & { path?: string },
+  ): Promise<boolean> {
+    const { path, ...rest } = params;
+    return this.sendNotification(to, {
+      ...rest,
+      eyebrow: 'Binntu para negocios',
+      ctaUrl: path ? `${this.frontendUrl}${path}` : undefined,
+    });
+  }
+
+  private async sendNotification(to: string, params: NotificationTemplateParams): Promise<boolean> {
+    try {
+      const { html, subject } = getNotificationTemplate(params);
+      const { data, error } = await this.resend.emails.send({ from: this.fromEmail, to, subject, html });
+      if (error) {
+        this.logger.error(`Failed to send notification "${params.subject}" to ${to}`, error);
+        return false;
+      }
+      this.logger.log(`Notification "${params.subject}" sent to ${to}, id: ${data?.id}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error sending notification "${params.subject}" to ${to}`, error);
       return false;
     }
   }

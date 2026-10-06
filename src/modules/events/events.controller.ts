@@ -7,10 +7,11 @@ import { TenantId } from '../tenant/tenant.decorator';
 import { User } from '../users/entities';
 import { CreateEventDto, EntityAnalyticsQueryDto, PlatformAnalyticsQueryDto } from './dto';
 import { EventsService } from './events.service';
-import { EntityOwnershipResolver } from './entity-ownership.resolver';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
 import { EntityAnalyticsService, EntityAnalyticsResponse } from './entity-analytics.service';
 import { PlatformAnalyticsService, PlatformAnalyticsResponse } from './platform-analytics.service';
 import { resolvePlatformScope } from './platform-analytics.scope';
+import { SubscriptionsService } from '../subscriptions/services';
 
 @ApiTags('Events')
 @Controller('events') // real path is /api/events due to the global 'api' prefix (Pitfall 6)
@@ -20,6 +21,7 @@ export class EventsController {
     private readonly ownership: EntityOwnershipResolver,
     private readonly entityAnalytics: EntityAnalyticsService,
     private readonly platformAnalytics: PlatformAnalyticsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   @Post()
@@ -53,6 +55,14 @@ export class EventsController {
     @GetUser() user: User,
   ): Promise<EntityAnalyticsResponse> {
     const { townId } = await this.ownership.assertCanRead(query.entityType, query.entityId, user);
+
+    // Freemium: business-owner analytics are a Premium benefit. Super-admins and town-admins of the
+    // entity's town always see them (they manage the territory, not the subscription).
+    const isAdmin = !!user?.isSuperUser || (user?.towns ?? []).some(t => t.id === townId);
+    if (!isAdmin && query.entityType !== 'place') {
+      await this.subscriptions.assertPremium(query.entityType, query.entityId, 'analytics');
+    }
+
     return this.entityAnalytics.getEntityAnalytics({ ...query, townId });
   }
 

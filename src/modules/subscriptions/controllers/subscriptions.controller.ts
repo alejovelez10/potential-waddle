@@ -52,9 +52,15 @@ export class SubscriptionsController {
     @Param('entityType') entityType: EntityType,
     @Param('entityId', ParseUUIDPipe) entityId: string,
   ) {
-    const subscription = await this.subscriptionsService.findByEntity(entityType, entityId);
+    const [subscription, isPremium] = await Promise.all([
+      this.subscriptionsService.findByEntity(entityType, entityId),
+      // Single source of truth for Premium (handles experiences through their guide and
+      // ignores newer pending/expired rows that findByEntity may return first).
+      this.subscriptionsService.isPremium(entityType, entityId),
+    ]);
     return {
-      hasActiveSubscription: subscription?.isActive || false,
+      hasActiveSubscription: isPremium,
+      isPremium,
       subscription,
     };
   }
@@ -68,7 +74,7 @@ export class SubscriptionsController {
   @ApiOperation({ summary: 'Create checkout for subscription payment' })
   @ApiOkResponse({ description: 'Checkout data for Wompi widget', type: CheckoutResponseDto })
   createCheckout(@Body() dto: CreateCheckoutDto, @GetUser() user: User) {
-    return this.subscriptionsService.createCheckout(user.id, dto);
+    return this.subscriptionsService.createCheckout(user, dto);
   }
 
   // * ----------------------------------------------------------------------------------------------------------------

@@ -14,10 +14,12 @@ import {
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 import { SwaggerTags } from 'src/config';
 import { Auth, OptionalAuth } from '../auth/decorators';
 import { GetUser } from '../common/decorators';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
 import { User } from '../users/entities';
 
 import { ExperiencesService } from './experiences.service';
@@ -41,7 +43,10 @@ import { RequestLocale } from '../translations/request-locale.decorator';
 @Controller(SwaggerTags.Experiences)
 @ApiTags(SwaggerTags.Experiences)
 export class ExperiencesController {
-  constructor(private readonly experiencesService: ExperiencesService) {}
+  constructor(
+    private readonly experiencesService: ExperiencesService,
+    private readonly ownership: EntityOwnershipResolver,
+  ) {}
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * GET ALL EXPERIENCES
@@ -140,7 +145,8 @@ export class ExperiencesController {
   @Post('admin/:identifier/approve')
   @Auth()
   @ApiOkResponse({ description: 'Experience approved', type: ExperienceDto })
-  approve(@Param('identifier') identifier: string) {
+  async approve(@Param('identifier') identifier: string, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('experience', identifier, user);
     return this.experiencesService.approve({ identifier });
   }
 
@@ -150,7 +156,8 @@ export class ExperiencesController {
   @Post('admin/:identifier/reject')
   @Auth()
   @ApiOkResponse({ description: 'Experience rejected', type: ExperienceDto })
-  reject(@Param('identifier') identifier: string, @Body() body: { reason: string }) {
+  async reject(@Param('identifier') identifier: string, @Body() body: { reason: string }, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('experience', identifier, user);
     return this.experiencesService.reject({ identifier, reason: body.reason });
   }
 
@@ -158,7 +165,7 @@ export class ExperiencesController {
   // * CREATE EXPERIENCE
   // * ----------------------------------------------------------------------------------------------------------------
   @Post()
-  @OptionalAuth()
+  @EntityAccess('manage', 'guide', { bodyId: 'guideId' })
   @ApiOkResponse({ description: 'Experience Created', type: CreateExperienceDto })
   create(@Body() createExperienceDto: CreateExperienceDto) {
     return this.experiencesService.create(createExperienceDto);
@@ -168,7 +175,7 @@ export class ExperiencesController {
   // * UPDATE EXPERIENCE
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier')
-  @OptionalAuth()
+  @EntityAccess('manage', 'experience')
   @ApiOkResponse({ description: 'Experience Updated', type: CreateExperienceDto })
   update(@Param('identifier') identifier: string, @Body() updateExperienceDto: UpdateExperienceDto) {
     return this.experiencesService.update(identifier, updateExperienceDto);
@@ -178,10 +185,16 @@ export class ExperiencesController {
   // * UPDATE GUIDE IN EXPERIENCE
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/guides/:guideId')
-  @OptionalAuth()
+  @EntityAccess('manage', 'experience')
   @ApiOkResponse({ description: 'Guide Updated in Experience', type: ExperienceDto })
   @ApiBadRequestResponse({ description: 'The guide cannot be updated in the experience' })
-  updateGuide(@Param('identifier') identifier: string, @Param('guideId', ParseUUIDPipe) guideId: string) {
+  async updateGuide(
+    @Param('identifier') identifier: string,
+    @Param('guideId', ParseUUIDPipe) guideId: string,
+    @GetUser() user: User,
+  ) {
+    // Moving an experience requires rights over the target guide too
+    await this.ownership.assertCanManage('guide', guideId, user);
     return this.experiencesService.updateGuide(identifier, guideId);
   }
 
@@ -189,7 +202,7 @@ export class ExperiencesController {
   // * DELETE EXPERIENCE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier')
-  @OptionalAuth()
+  @EntityAccess('manage', 'experience')
   @ApiOkResponse({ description: 'Experience Deleted' })
   deleteExperience(@Param('identifier') identifier: string) {
     return this.experiencesService.delete(identifier);
@@ -199,14 +212,14 @@ export class ExperiencesController {
   // * BULK DELETE EXPERIENCES (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/bulk-delete')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'experience', { bodyIds: 'ids' })
   @ApiOkResponse({ description: 'Count of experiences deleted', schema: { example: { deleted: 4 } } })
   bulkDelete(@Body() dto: BulkDeleteExperiencesDto) {
     return this.experiencesService.bulkDelete(dto.ids);
   }
 
   @Patch(':identifier/visibility')
-  @OptionalAuth()
+  @EntityAccess('manage', 'experience')
   @ApiOkResponse({ description: 'Experience Visibility Updated', type: ExperienceDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateVisibility(@Param('identifier') identifier: string, @Body() body: { isPublic: boolean }) {
@@ -217,6 +230,7 @@ export class ExperiencesController {
   // * UPLOAD EXPERIENCE IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/upload-images')
+  @EntityAccess('manage', 'experience')
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -256,7 +270,7 @@ export class ExperiencesController {
   // * DELETE EXPERIENCE IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier/images/:imageId')
-  @OptionalAuth()
+  @EntityAccess('manage', 'experience')
   @ApiOkResponse({ description: 'Image Deleted' })
   @ApiBadRequestResponse({ description: 'The image cannot be deleted' })
   deleteImage(@Param('identifier') identifier: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -264,7 +278,7 @@ export class ExperiencesController {
   }
 
   @Patch(':identifier/images/reorder')
-  @OptionalAuth()
+  @EntityAccess('manage', 'experience')
   @ApiOkResponse({ description: 'Images Reordered' })
   @ApiBadRequestResponse({ description: 'The images cannot be reordered' })
   reorderImages(@Param('identifier') identifier: string, @Body() reorderImagesDto: ReorderImagesDto) {

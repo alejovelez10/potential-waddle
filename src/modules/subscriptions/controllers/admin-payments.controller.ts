@@ -2,7 +2,7 @@ import { Controller, Get, Patch, Delete, Param, Query, ParseUUIDPipe, Body } fro
 import { ApiTags, ApiOkResponse, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 import { SuperAdmin } from '../../auth/decorators';
-import { PaymentsService } from '../services';
+import { PaymentsService, SubscriptionsService } from '../services';
 import { PaymentDto, AdminUpdatePaymentDto } from '../dto';
 import { PaymentStatus } from '../entities';
 
@@ -10,7 +10,10 @@ import { PaymentStatus } from '../entities';
 @ApiTags('Admin - Payments')
 @SuperAdmin()
 export class AdminPaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly subscriptionsService: SubscriptionsService,
+  ) {}
 
   @Get('list')
   @ApiOperation({ summary: 'Get all payments (admin)' })
@@ -49,11 +52,18 @@ export class AdminPaymentsController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update payment status (admin)' })
   @ApiOkResponse({ description: 'Payment updated', type: PaymentDto })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminUpdatePaymentDto) {
-    return this.paymentsService.adminUpdateStatus(id, dto.status, {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminUpdatePaymentDto) {
+    const payment = await this.paymentsService.adminUpdateStatus(id, dto.status, {
       paymentMethod: dto.paymentMethod,
       failureReason: dto.failureReason,
     });
+
+    // Mirror the Wompi webhook so a manually reconciled payment has the same effect.
+    if (dto.status === 'approved') await this.subscriptionsService.activateSubscriptionsByPayment(id);
+    if (dto.status === 'declined' || dto.status === 'error')
+      await this.subscriptionsService.failSubscriptionsByPayment(id);
+
+    return payment;
   }
 
   @Delete(':id')

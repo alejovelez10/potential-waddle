@@ -1,10 +1,17 @@
-import { Controller, Get, Post, Delete, Param, Query, ParseUUIDPipe, Body } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, ParseUUIDPipe, Body } from '@nestjs/common';
 import { ApiTags, ApiOkResponse, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 import { SuperAdmin } from '../../auth/decorators';
 import { SubscriptionsService } from '../services';
-import { SubscriptionDto, AdminCreateSubscriptionDto, BulkDeleteSubscriptionsDto } from '../dto';
-import { EntityType } from '../entities';
+import {
+  SubscriptionDto,
+  AdminCreateSubscriptionDto,
+  BulkDeleteSubscriptionsDto,
+  AdminUpdateAssistanceDto,
+} from '../dto';
+import { AssistanceStatus, EntityType } from '../entities';
+import { GetUser } from '../../common/decorators';
+import { User } from '../../users/entities';
 import { UsersService } from '../../users/services/users.service';
 
 @Controller('subscriptions/admin')
@@ -24,6 +31,7 @@ export class AdminSubscriptionsController {
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
   @ApiQuery({ name: 'entityType', required: false, enum: ['lodging', 'restaurant', 'commerce', 'transport', 'guide'] })
+  @ApiQuery({ name: 'assistanceStatus', required: false, enum: ['none', 'pending', 'contacted', 'completed'] })
   @ApiQuery({ name: 'sortBy', required: false, enum: ['createdAt', 'updatedAt', 'currentPeriodEnd'] })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['ASC', 'DESC'] })
   findAll(
@@ -32,6 +40,7 @@ export class AdminSubscriptionsController {
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('entityType') entityType?: EntityType,
+    @Query('assistanceStatus') assistanceStatus?: AssistanceStatus,
     @Query('sortBy') sortBy?: 'createdAt' | 'updatedAt' | 'currentPeriodEnd',
     @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
   ) {
@@ -41,9 +50,21 @@ export class AdminSubscriptionsController {
       search,
       status,
       entityType,
+      assistanceStatus,
       sortBy,
       sortOrder,
     });
+  }
+
+  @Patch(':id/assistance')
+  @ApiOperation({ summary: 'Update the Premium accompaniment follow-up (pending → contacted → completed)' })
+  @ApiOkResponse({ type: SubscriptionDto })
+  updateAssistance(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminUpdateAssistanceDto,
+    @GetUser() user: User,
+  ) {
+    return this.subscriptionsService.updateAssistance(id, dto, user);
   }
 
   @Get('user-businesses/:userId')

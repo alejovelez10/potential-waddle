@@ -1,5 +1,6 @@
 import { Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Body, Put } from '@nestjs/common';
 import { ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SuperAdmin } from '../../auth/decorators';
 
 import { SwaggerTags } from 'src/config';
 import { GenericFindAllFilters } from 'src/modules/common/decorators';
@@ -9,6 +10,7 @@ import { UserSortByEnum } from '../constants';
 import { AdminUsersFiltersApiQueries } from '../decorators';
 
 @Controller('admin/users')
+@SuperAdmin()
 @ApiTags(SwaggerTags.Users)
 export class AdminUsersController {
   constructor(private readonly usersService: UsersService) {}

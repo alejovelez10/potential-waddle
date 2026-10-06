@@ -1,3 +1,4 @@
+import { CommonModule } from '../common/common.module';
 import { Module } from '@nestjs/common';
 import { PlacesService } from './places.service';
 import { PlacesController } from './places.controller';
@@ -10,6 +11,7 @@ import { TranslationsModule } from '../translations/translations.module';
 
 @Module({
   imports: [
+    CommonModule,
     TypeOrmModule.forFeature([Place, Category, Facility, ImageResource, PlaceImage]),
     CloudinaryModule,
     ReviewsModule,

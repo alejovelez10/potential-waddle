@@ -1,3 +1,4 @@
+import { PromotionEntityType } from '../entities/promotion.entity';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class FileUploadDto {
@@ -9,10 +10,10 @@ export class FileUploadDto {
 
   @ApiProperty({
     description: 'The type of entity this promotion belongs to',
-    enum: ['lodging', 'restaurant', 'experience', 'guide'],
+    enum: ['lodging', 'restaurant', 'experience', 'guide', 'commerce'],
     example: 'lodging',
   })
-  entityType: 'lodging' | 'restaurant' | 'experience' | 'guide';
+  entityType: PromotionEntityType;
 
   @ApiProperty({
     description: 'The slug of the entity (optional, will be fetched if not provided)',
@@ -69,11 +70,11 @@ export class UpdateFileUploadDto {
 
   @ApiProperty({
     description: 'The type of entity this promotion belongs to',
-    enum: ['lodging', 'restaurant', 'experience', 'guide'],
+    enum: ['lodging', 'restaurant', 'experience', 'guide', 'commerce'],
     example: 'lodging',
     required: false,
   })
-  entityType?: 'lodging' | 'restaurant' | 'experience' | 'guide';
+  entityType?: PromotionEntityType;
 
   @ApiProperty({
     description: 'The slug of the entity (optional, will be fetched if not provided)',

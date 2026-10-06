@@ -25,6 +25,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Request } from 'express';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
 
 import { PlaceDetailDto, PlaceDto, AdminPlacesFiltersDto, AdminPlacesListDto } from './dto';
 import { SwaggerTags } from 'src/config';
@@ -51,16 +53,20 @@ export class PlacesController {
   constructor(
     private readonly placesService: PlacesService,
     private readonly placeReviewsService: PlaceReviewsService,
+    private readonly ownership: EntityOwnershipResolver,
   ) {}
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * CREATE PLACE
   // * ----------------------------------------------------------------------------------------------------------------
   @Post()
+  @Auth()
   @ApiOperation({ summary: 'Create a new place' })
   @ApiConsumes('multipart/form-data')
   @ApiOkResponse({ description: 'The place has been successfully created.', type: PlaceDto })
-  create(@Body() createPlaceDto: CreatePlaceDto) {
+  create(@Body() createPlaceDto: CreatePlaceDto, @GetUser() user: User) {
+    // Places are admin-managed: super-admin or a town-admin of the target town
+    this.ownership.assertCanAdminTown(createPlaceDto.townId, user);
     return this.placesService.create({ ...createPlaceDto });
   }
 
@@ -146,6 +152,7 @@ export class PlacesController {
   // * UPDATE PLACE
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @EntityAccess('manage', 'place', { param: 'id' })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() updatePlaceDto: UpdatePlaceDto) {
     return this.placesService.update(id, updatePlaceDto);
   }
@@ -154,6 +161,7 @@ export class PlacesController {
   // * DELETE PLACE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @EntityAccess('manage', 'place', { param: 'id' })
   @ApiOperation({ summary: 'Delete a place', deprecated: true })
   remove(@Param('id') id: string) {
     return this.placesService.delete(id);
@@ -163,6 +171,7 @@ export class PlacesController {
   // * PLACE IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':id/image')
+  @EntityAccess('manage', 'place', { param: 'id' })
   @UseInterceptors(FileInterceptor('image'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Add a new image to a place', deprecated: true })
@@ -178,6 +187,7 @@ export class PlacesController {
   // * DELETE PLACE IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':id/image/:imageId')
+  @EntityAccess('manage', 'place', { param: 'id' })
   @ApiOperation({ summary: 'Remove a place image', deprecated: true })
   removeImage(@Param('id') id: string, @Param('imageId') imageId: string) {
     console.log(id, imageId);
@@ -253,7 +263,7 @@ export class PlacesController {
   // * UPDATE PLACE VISIBILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/visibility')
-  @OptionalAuth()
+  @EntityAccess('manage', 'place')
   @ApiOkResponse({ description: 'Lodging Visibility Updated', type: PlaceDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateVisibility(@Param('identifier') identifier: string, @Body() body: { isPublic: boolean }) {
@@ -264,6 +274,7 @@ export class PlacesController {
   // * UPLOAD PLACE IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/upload-images')
+  @EntityAccess('manage', 'place')
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -317,7 +328,7 @@ export class PlacesController {
   // * DELETE PLACE IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier/images/:imageId')
-  @OptionalAuth()
+  @EntityAccess('manage', 'place')
   @ApiOkResponse({ description: 'Image Deleted' })
   @ApiBadRequestResponse({ description: 'The image cannot be deleted' })
   deleteImage(@Param('identifier') identifier: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -325,7 +336,7 @@ export class PlacesController {
   }
 
   @Patch(':identifier/images/reorder')
-  @OptionalAuth()
+  @EntityAccess('manage', 'place')
   @ApiOkResponse({ description: 'Images Reordered' })
   @ApiBadRequestResponse({ description: 'The images cannot be reordered' })
   reorderImages(@Param('identifier') identifier: string, @Body() reorderImagesDto: ReorderImagesDto) {

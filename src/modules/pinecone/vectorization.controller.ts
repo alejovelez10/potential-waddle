@@ -1,10 +1,10 @@
-import { Controller, Post, Get, Delete, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Query } from '@nestjs/common';
 import { VectorizationService } from './vectorization.service';
 import { EntityType } from './chunking.service';
-import { JwtAuthGuard } from '../auth/guards';
+import { SuperAdmin } from '../auth/decorators';
 
 @Controller('vectorization')
-@UseGuards(JwtAuthGuard)
+@SuperAdmin()
 export class VectorizationController {
   constructor(private readonly vectorizationService: VectorizationService) {}
 

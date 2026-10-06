@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { ApiBadRequestResponse, ApiBody, ApiConsumes, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 import { SwaggerTags } from 'src/config';
 import { Auth, OptionalAuth } from '../auth/decorators';
@@ -146,7 +147,7 @@ export class LodgingsController {
   // * UPDATE LODGING
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier')
-  @OptionalAuth()
+  @EntityAccess('manage', 'lodging')
   @ApiOkResponse({ description: 'Lodging Updated', type: LodgingFullDto })
   update(@Param('identifier') identifier: string, @Body() updateLodgingDto: UpdateLodgingDto) {
     return this.lodgingsService.update(identifier, updateLodgingDto);
@@ -156,7 +157,7 @@ export class LodgingsController {
   // * UPDATE USER IN LODGING
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/users/:userId')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'lodging')
   @ApiOkResponse({ description: 'User Updated in Lodging', type: LodgingFullDto })
   @ApiBadRequestResponse({ description: 'The user cannot be updated in the lodging' })
   updateUser(@Param('identifier') identifier: string, @Param('userId', ParseUUIDPipe) userId: string) {
@@ -167,7 +168,7 @@ export class LodgingsController {
   // * DELETE LODGING
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier')
-  @OptionalAuth()
+  @EntityAccess('manage', 'lodging')
   @ApiOkResponse({ description: 'Lodging Deleted' })
   deleteLodging(@Param('identifier') identifier: string) {
     return this.lodgingsService.delete(identifier);
@@ -177,7 +178,7 @@ export class LodgingsController {
   // * BULK DELETE LODGINGS (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/bulk-delete')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'lodging', { bodyIds: 'ids' })
   @ApiOkResponse({
     description: 'Count of lodgings deleted',
     schema: { example: { deleted: 4 } },
@@ -187,7 +188,7 @@ export class LodgingsController {
   }
 
   @Patch(':identifier/visibility')
-  @OptionalAuth()
+  @EntityAccess('manage', 'lodging')
   @ApiOkResponse({ description: 'Lodging Visibility Updated', type: LodgingFullDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateVisibility(@Param('identifier') identifier: string, @Body() body: { isPublic: boolean }) {
@@ -198,7 +199,7 @@ export class LodgingsController {
   // * UPDATE LODGING GOOGLE MAPS REVIEWS VISIBILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/show-google-maps-reviews')
-  @OptionalAuth()
+  @EntityAccess('manage', 'lodging')
   @ApiOkResponse({ description: 'Lodging Google Maps Reviews Visibility Updated', type: LodgingFullDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateShowGoogleMapsReviews(
@@ -223,6 +224,7 @@ export class LodgingsController {
   // * UPLOAD LODGING IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/upload-images')
+  @EntityAccess('manage', 'lodging')
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -279,7 +281,7 @@ export class LodgingsController {
   // * DELETE LODGING IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier/images/:imageId')
-  @OptionalAuth()
+  @EntityAccess('manage', 'lodging')
   @ApiOkResponse({ description: 'Image Deleted' })
   @ApiBadRequestResponse({ description: 'The image cannot be deleted' })
   deleteImage(@Param('identifier') identifier: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -287,7 +289,7 @@ export class LodgingsController {
   }
 
   @Patch(':identifier/images/reorder')
-  @OptionalAuth()
+  @EntityAccess('manage', 'lodging')
   @ApiOkResponse({ description: 'Images Reordered' })
   @ApiBadRequestResponse({ description: 'The images cannot be reordered' })
   reorderImages(@Param('identifier') identifier: string, @Body() reorderImagesDto: ReorderImagesDto) {

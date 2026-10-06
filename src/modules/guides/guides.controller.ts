@@ -38,14 +38,19 @@ import { ContentTypes } from '../common/constants/content-types';
 import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { GetUser } from '../common/decorators';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { RequestLocale } from '../translations/request-locale.decorator';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 @Controller('guides')
 @ApiTags(SwaggerTags.Guides)
 export class GuidesController {
-  constructor(private readonly guidesService: GuidesService) {}
+  constructor(
+    private readonly guidesService: GuidesService,
+    private readonly ownership: EntityOwnershipResolver,
+  ) {}
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * CREATE GUIDE
@@ -152,7 +157,8 @@ export class GuidesController {
   @Post('admin/:identifier/approve')
   @Auth()
   @ApiOkResponse({ description: 'Guide approved', type: GuideDto })
-  approve(@Param('identifier') identifier: string) {
+  async approve(@Param('identifier') identifier: string, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('guide', identifier, user);
     return this.guidesService.approve({ identifier });
   }
 
@@ -162,7 +168,8 @@ export class GuidesController {
   @Post('admin/:identifier/reject')
   @Auth()
   @ApiOkResponse({ description: 'Guide rejected', type: GuideDto })
-  reject(@Param('identifier') identifier: string, @Body() body: { reason: string }) {
+  async reject(@Param('identifier') identifier: string, @Body() body: { reason: string }, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('guide', identifier, user);
     return this.guidesService.reject({ identifier, reason: body.reason });
   }
 
@@ -170,6 +177,7 @@ export class GuidesController {
   // * UPDATE GUIDE
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':slug')
+  @EntityAccess('manage', 'guide', { param: 'slug' })
   @ApiParam({ name: 'slug', type: 'string', description: 'The slug of the guide' })
   @ApiOkResponse({ description: 'The guide has been successfully updated.', type: GuideDto })
   update(@Param('slug') slug: string, @Body() updateGuideDto: UpdateGuideDto) {
@@ -180,6 +188,7 @@ export class GuidesController {
   // * DELETE GUIDE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @EntityAccess('manage', 'guide', { param: 'id' })
   @ApiOperation({ summary: 'Delete a guide' })
   remove(@Param('id') id: string) {
     return this.guidesService.remove(id);
@@ -189,6 +198,7 @@ export class GuidesController {
   // * BULK DELETE GUIDES (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/bulk-delete')
+  @EntityAccess('moderate', 'guide', { bodyIds: 'ids' })
   @ApiOperation({ summary: 'Bulk delete guides' })
   @ApiOkResponse({ description: 'Count of guides deleted', schema: { example: { deleted: 4 } } })
   bulkDelete(@Body() dto: BulkDeleteGuidesDto) {
@@ -199,6 +209,7 @@ export class GuidesController {
   // * UPDATE GUIDE AVAILABILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':id/availability')
+  @EntityAccess('manage', 'guide', { param: 'id' })
   @ApiOperation({ summary: 'Update guide availability status' })
   @ApiParam({ name: 'id', type: 'string', description: 'The UUID of the guide' })
   @ApiBody({
@@ -218,6 +229,7 @@ export class GuidesController {
   // * UPLOAD LODGING IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/upload-images')
+  @EntityAccess('manage', 'guide')
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -257,7 +269,7 @@ export class GuidesController {
   // * DELETE LODGING IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier/images/:imageId')
-  @OptionalAuth()
+  @EntityAccess('manage', 'guide')
   @ApiOkResponse({ description: 'Image Deleted' })
   @ApiBadRequestResponse({ description: 'The image cannot be deleted' })
   deleteImage(@Param('identifier') identifier: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -268,7 +280,7 @@ export class GuidesController {
   // * REORDER GUIDE IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/images/reorder')
-  @OptionalAuth()
+  @EntityAccess('manage', 'guide')
   @ApiOkResponse({ description: 'Images Reordered' })
   @ApiBadRequestResponse({ description: 'The images cannot be reordered' })
   reorderImages(@Param('identifier') identifier: string, @Body() reorderImagesDto: ReorderImagesDto) {
@@ -279,7 +291,7 @@ export class GuidesController {
   // * UPDATE USER IN GUIDE
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/users/:userId')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'guide')
   @ApiOkResponse({ description: 'User Updated in Guide', type: GuideDto })
   @ApiBadRequestResponse({ description: 'The user cannot be updated in the guide' })
   updateUser(@Param('identifier') identifier: string, @Param('userId', ParseUUIDPipe) userId: string) {
@@ -291,7 +303,7 @@ export class GuidesController {
   // * UPDATE GUIDE VISIBILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/visibility')
-  @OptionalAuth()
+  @EntityAccess('manage', 'guide')
   @ApiOkResponse({ description: 'Guide Visibility Updated', type: GuideDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateVisibility(@Param('identifier') identifier: string, @Body() body: { isPublic: boolean }) {

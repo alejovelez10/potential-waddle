@@ -4,6 +4,7 @@ import { SwaggerTags } from 'src/config';
 import { Auth } from 'src/modules/auth/decorators';
 import { CreateAppIconDto, UpdateAppIconDto, AdminAppIconsFiltersDto } from '../dto';
 import { AppIconsService } from '../services';
+import { SuperAdmin } from '../../auth/decorators';
 
 @Controller('app-icons')
 @ApiTags(SwaggerTags.AppIcons)
@@ -14,7 +15,7 @@ export class AppIconsController {
   // * GET ALL APP ICONS PAGINATED (ADMIN)
   // * -------------------------------------------------------------------------------------------------------------
   @Get('admin/list')
-  @Auth()
+  @SuperAdmin()
   getAdminList(@Query() filters: AdminAppIconsFiltersDto) {
     return this.appIconsService.findAllPaginated(filters);
   }
@@ -23,6 +24,7 @@ export class AppIconsController {
   // * CREATE NEW APP ICON
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @SuperAdmin()
   @ApiOperation({ summary: 'Create a new app icon' })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -78,6 +80,7 @@ export class AppIconsController {
   // * UPDATE APP ICON
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Update an app icon' })
   @ApiParam({ name: 'id', description: 'App Icon UUID', type: 'string' })
   @ApiResponse({
@@ -94,6 +97,7 @@ export class AppIconsController {
   // * DELETE APP ICON
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Delete an app icon' })
   @ApiParam({ name: 'id', description: 'App Icon UUID', type: 'string' })
   @ApiResponse({

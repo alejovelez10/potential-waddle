@@ -1,3 +1,5 @@
+import { CommonModule } from '../common/common.module';
+import { VerificationModule } from '../verification/verification.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -24,6 +26,8 @@ import { TranslationsModule } from '../translations/translations.module';
   controllers: [LodgingsController, LodgingRoomTypesController, AdminLodgingsController],
   providers: [LodgingsService, LodgingRoomTypesService],
   imports: [
+    CommonModule,
+    VerificationModule,
     TypeOrmModule.forFeature([
       Lodging,
       LodgingImage,

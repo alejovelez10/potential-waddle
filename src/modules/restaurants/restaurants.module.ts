@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { CommonModule } from '../common/common.module';
+import { VerificationModule } from '../verification/verification.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
@@ -34,6 +36,8 @@ import { TranslationsModule } from '../translations/translations.module';
     RestaurantMenuAccessGuard,
   ],
   imports: [
+    CommonModule,
+    VerificationModule,
     TypeOrmModule.forFeature([Restaurant, ImageResource, Category, Facility, Town, User, Menu]),
     HttpModule,
     ConfigModule,

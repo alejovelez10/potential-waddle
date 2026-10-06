@@ -7,6 +7,7 @@ import { FacilitiesService } from '../services';
 import { ModelsEnum } from '../enums';
 import { RequestLocale } from '../../translations/request-locale.decorator';
 import { TranslationResolverService } from '../../translations/translation-resolver.service';
+import { SuperAdmin } from '../../auth/decorators';
 
 @Controller('facilities')
 @ApiTags(SwaggerTags.Facilities)
@@ -29,6 +30,7 @@ export class FacilitiesController {
   // * CREATE NEW FACILITY
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @SuperAdmin()
   create(@Body() createFacilityDto: CreateFacilityDto) {
     return this.facilitiesService.create(createFacilityDto);
   }
@@ -56,10 +58,12 @@ export class FacilitiesController {
   ) {
     const facilities = await this.facilitiesService.findAll({ slug, innerJoin });
     if (locale === 'es' || !facilities.length) return facilities;
-    const translationsMap = await this.translationResolver.batchLoad('facility', facilities.map(f => f.id), locale);
-    return facilities.map(fac =>
-      this.translationResolver.overlay({ ...fac }, translationsMap.get(fac.id) ?? {}),
+    const translationsMap = await this.translationResolver.batchLoad(
+      'facility',
+      facilities.map(f => f.id),
+      locale,
     );
+    return facilities.map(fac => this.translationResolver.overlay({ ...fac }, translationsMap.get(fac.id) ?? {}));
   }
 
   @Get('full')
@@ -81,6 +85,7 @@ export class FacilitiesController {
   // * UPDATE FACILITY
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Update facility by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Facility updated successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Facility not found' })
@@ -91,6 +96,7 @@ export class FacilitiesController {
   // * DELETE FACILITY
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Delete facility by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Facility deleted successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Facility not found' })

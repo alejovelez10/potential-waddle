@@ -267,6 +267,16 @@ export class CommerceIndexDto {
   })
   showBinntuReviews?: boolean;
 
+  @ApiProperty({ example: false, description: 'Premium business (active subscription)', required: false })
+  isPremium?: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Verified by Binntu (documents reviewed) — independent from Premium',
+    required: false,
+  })
+  isVerified?: boolean;
+
   constructor(commerce?: Commerce, userReview?: string) {
     if (!commerce) return;
     this.id = commerce.id;

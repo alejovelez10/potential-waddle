@@ -106,6 +106,12 @@ export class RestaurantIndexDto {
 
   userReview?: string;
 
+  /** Premium business (active subscription) — freemium benefit flag. */
+  isPremium?: boolean;
+
+  /** Verified by Binntu (documents reviewed) — independent from Premium. */
+  isVerified?: boolean;
+
   constructor({ data, userReview }: { data?: Restaurant | null; userReview?: string }) {
     if (!data) return;
 

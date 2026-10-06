@@ -30,6 +30,8 @@ import { TermsTypeEnum } from '../terms/interfaces';
 import { isTermsEnforcementEnabled } from '../terms/utils';
 import { DocumentService } from '../documents/services';
 import { DocumentEntityType } from '../documents/enums';
+import { findPagePremiumFirst, shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
+import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
 import {
   computeGuideCompletion,
@@ -60,6 +62,7 @@ export class GuidesService {
     private readonly termsService: TermsService,
     private readonly documentService: DocumentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly verificationService: VerificationService,
     private readonly translationResolver: TranslationResolverService,
   ) {}
 
@@ -92,12 +95,7 @@ export class GuidesService {
     const skip = (page - 1) * limit;
     const { where, order } = generateGuideQueryFilters(filters);
 
-    // 3-state gating: status='published' + isPublic=true + active subscription.
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('guide');
-    if (subscribedIds.length === 0) {
-      return new GuidesListDto({ currentPage: page, pages: 0, count: 0 }, []);
-    }
-
+    // Freemium gating: status='published' + isPublic=true (no subscription required).
     const relations: FindOptionsRelations<Guide> = {
       categories: { icon: true },
       images: { imageResource: true },
@@ -110,7 +108,7 @@ export class GuidesService {
       take: limit,
       relations,
       order,
-      where: { ...where, id: In(subscribedIds), status: 'published', isPublic: true },
+      where: { ...where, status: 'published', isPublic: true },
     });
 
     return new GuidesListDto({ currentPage: page, pages: Math.ceil(count / limit), count }, guides);
@@ -205,9 +203,6 @@ export class GuidesService {
     const skip = (page - 1) * limit;
     const { where, order } = generateGuideQueryFilters(filters);
 
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('guide');
-    // Sin early-return: aunque no haya suscripciones, los forced_public deben mostrarse.
-
     const relations: FindOptionsRelations<Guide> = {
       categories: { icon: true },
       images: { imageResource: true },
@@ -215,21 +210,25 @@ export class GuidesService {
       towns: { department: true },
     };
 
-    // Obtener guides y reviews del usuario en paralelo
+    const premiumIds = await this.subscriptionsService.getPremiumIdSet('guide');
+    const verifiedIds = await this.verificationService.getVerifiedIdSet('guide');
+    const listOptions = {
+      skip,
+      take: limit,
+      relations,
+      order,
+      where: [
+        { ...where, isPublic: true, status: 'published' as const },
+        { ...where, forcedPublic: true },
+      ],
+    };
+
+    // Obtener guides y reviews del usuario en paralelo.
+    // Premium gets more exposure on the default ordering (freemium): rank before paginating.
     const [result, userReviews] = await Promise.all([
-      this.guideRepository.findAndCount({
-        skip,
-        take: limit,
-        relations,
-        order,
-        where:
-          subscribedIds.length > 0
-            ? [
-                { ...where, isPublic: true, status: 'published', id: In(subscribedIds) },
-                { ...where, forcedPublic: true },
-              ]
-            : [{ ...where, forcedPublic: true }],
-      }),
+      shouldRankPremiumFirst(filters?.sortBy)
+        ? findPagePremiumFirst(this.guideRepository, listOptions, premiumIds)
+        : this.guideRepository.findAndCount(listOptions),
       user
         ? this.entityReviewsService.getUserReviews({
             entityType: ReviewDomainsEnum.GUIDES,
@@ -239,7 +238,7 @@ export class GuidesService {
     ]);
 
     const [_guides, count] = result;
-    const guides = _guides;
+    let guides = _guides;
 
     if (shouldRandomize) {
       // Fisher-Yates shuffle algorithm for better randomization
@@ -247,13 +246,18 @@ export class GuidesService {
         const j = Math.floor(Math.random() * (i + 1));
         [guides[i], guides[j]] = [guides[j], guides[i]];
       }
+      guides = sortPremiumFirst(guides, premiumIds);
     }
 
     // Batch-load translations once for all guides (N+1 guard — zero AI at request time)
     let translationsMap: Map<string, Record<string, string>> = new Map();
     let categoryTranslations: Map<string, Record<string, string>> = new Map();
     if (locale !== 'es' && guides.length) {
-      translationsMap = await this.translationResolver.batchLoad('guide', guides.map(g => g.id), locale);
+      translationsMap = await this.translationResolver.batchLoad(
+        'guide',
+        guides.map(g => g.id),
+        locale,
+      );
       const categoryIds = [...new Set(guides.flatMap(g => (g.categories ?? []).map(c => c.id)))];
       categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
@@ -265,22 +269,23 @@ export class GuidesService {
       data: guides.map(guide => {
         const userReview = userReviews.find(r => r.guide?.id === guide.id);
         const base =
-          locale !== 'es'
-            ? this.translationResolver.overlay({ ...guide }, translationsMap.get(guide.id) ?? {})
-            : guide;
+          locale !== 'es' ? this.translationResolver.overlay({ ...guide }, translationsMap.get(guide.id) ?? {}) : guide;
         if (locale !== 'es') {
-          (base as Guide).categories = this.translationResolver.overlayCollection(guide.categories ?? [], categoryTranslations);
+          (base as Guide).categories = this.translationResolver.overlayCollection(
+            guide.categories ?? [],
+            categoryTranslations,
+          );
         }
-        return new GuideDto({ data: base as Guide, userReview: userReview?.id });
+        const dto = new GuideDto({ data: base as Guide, userReview: userReview?.id });
+        dto.isPremium = premiumIds.has(guide.id);
+        dto.isVerified = verifiedIds.has(guide.id);
+        return dto;
       }),
     };
   }
 
   async findPublicFullInfoGuides(filters: GuidesFiltersDto = {}): Promise<GuideVectorDto[]> {
     const { where, order } = generateGuideQueryFilters(filters);
-
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('guide');
-    if (subscribedIds.length === 0) return [];
 
     const relations: FindOptionsRelations<Guide> = {
       categories: { icon: true },
@@ -301,7 +306,6 @@ export class GuidesService {
         ...where,
         isPublic: true,
         status: 'published',
-        id: In(subscribedIds),
       },
     });
 
@@ -345,6 +349,8 @@ export class GuidesService {
       : null;
 
     const dto = new GuideDto({ data: guide, userReview: userReview?.id });
+    dto.isPremium = await this.subscriptionsService.isPremium('guide', guide.id);
+    dto.isVerified = await this.verificationService.isVerified('guide', guide.id);
 
     // Enrich with completion fields for the owner (their wizard) and for super admins
     // (so the admin review screens see the same percentages the owner sees).
@@ -388,10 +394,7 @@ export class GuidesService {
     // Load and overlay translations for the requested locale (zero AI at request time)
     const base =
       locale !== 'es'
-        ? this.translationResolver.overlay(
-            { ...guide },
-            await this.translationResolver.load('guide', guide.id, locale),
-          )
+        ? this.translationResolver.overlay({ ...guide }, await this.translationResolver.load('guide', guide.id, locale))
         : guide;
 
     // Guides no tienen facilities (ni entidad, ni relation, ni DTO) — SOLO categorías.
@@ -401,7 +404,10 @@ export class GuidesService {
         (guide.categories ?? []).map(c => c.id),
         locale,
       );
-      (base as Guide).categories = this.translationResolver.overlayCollection(guide.categories ?? [], categoryTranslations);
+      (base as Guide).categories = this.translationResolver.overlayCollection(
+        guide.categories ?? [],
+        categoryTranslations,
+      );
     }
 
     return new GuideDto({ data: base as Guide, userReview: userReview?.id });
@@ -532,6 +538,14 @@ export class GuidesService {
     });
 
     if (!guide) throw new NotFoundException('Guide not found');
+
+    // Freemium photo capacity (Free 10 / Premium 30)
+    await this.subscriptionsService.assertPhotoCapacity(
+      'guide',
+      guide.id,
+      guide.images?.length ?? 0,
+      files?.length ?? 0,
+    );
 
     try {
       // Process each file in the array
@@ -809,13 +823,6 @@ export class GuidesService {
         errorCode: 'TERMS_NOT_ACCEPTED',
         termsType: 'guide',
         activeTermsId: context.termsStatus.activeTermsId ?? null,
-      });
-    }
-
-    if (context.docsStatus.state === 'incompletos') {
-      throw new BadRequestException({
-        errorCode: 'DOCS_INCOMPLETE',
-        docsStatus: context.docsStatus,
       });
     }
 

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Subscription, SubscriptionStatus, EntityType } from '../entities';
+import { Subscription, SubscriptionStatus, EntityType, AssistanceStatus } from '../entities';
 import { PlanDto } from './plan.dto';
 
 export class SubscriptionDto {
@@ -54,6 +54,22 @@ export class SubscriptionDto {
   @ApiProperty({ example: 'Wompi', description: 'Payment type: Wompi or Manual' })
   paymentType: 'Wompi' | 'Manual';
 
+  @ApiProperty({ example: 'pending', enum: ['none', 'pending', 'contacted', 'completed'] })
+  assistanceStatus: AssistanceStatus;
+
+  @ApiProperty({ example: false, description: 'Bought through "Registro asistido" (paid while in draft)' })
+  assistedOnboarding: boolean;
+
+  @ApiProperty({ example: 'Llamado el 7/10, envía fotos el viernes', nullable: true })
+  assistanceNotes: string | null;
+
+  @ApiProperty({
+    required: false,
+    description: 'Owner contact (only when the user relation is loaded, e.g. admin list)',
+    example: { id: 'uuid', username: 'finca-la-montana', email: 'owner@mail.com' },
+  })
+  user?: { id: string; username: string; email: string };
+
   constructor(subscription?: Subscription) {
     if (!subscription) return;
     this.id = subscription.id;
@@ -69,6 +85,12 @@ export class SubscriptionDto {
     this.currentPeriodEnd = subscription.currentPeriodEnd;
     this.canceledAt = subscription.canceledAt;
     this.createdAt = subscription.createdAt;
+    this.assistanceStatus = subscription.assistanceStatus ?? 'none';
+    this.assistedOnboarding = !!subscription.assistedOnboarding;
+    this.assistanceNotes = subscription.assistanceNotes ?? null;
+    this.user = subscription.user
+      ? { id: subscription.user.id, username: subscription.user.username, email: subscription.user.email }
+      : undefined;
 
     const now = new Date();
     // currentPeriodEnd is null for lifetime (Plan Free) subscriptions — they never expire

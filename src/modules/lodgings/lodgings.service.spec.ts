@@ -17,6 +17,7 @@ import { TermsService } from '../terms/services';
 import { DocumentService } from '../documents/services';
 import { ResendService } from '../email/services/resend.service';
 import { SubscriptionsService } from '../subscriptions/services';
+import { VerificationService } from '../verification/verification.service';
 import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 // ---------------------------------------------------------------------------
@@ -182,7 +183,17 @@ describe('LodgingsService — submitForReview', () => {
         { provide: DataSource, useValue: dataSource },
         { provide: ResendService, useValue: resendService },
         { provide: SubscriptionsService, useValue: { getActiveSubscribedEntityIds: jest.fn().mockResolvedValue([]) } },
-        { provide: TranslationResolverService, useValue: { batchLoad: jest.fn(), load: jest.fn(), overlay: jest.fn((e: any, t: any) => ({ ...e, ...t })) } },
+        {
+          provide: VerificationService,
+          useValue: {
+            getVerifiedIdSet: jest.fn().mockResolvedValue(new Set()),
+            isVerified: jest.fn().mockResolvedValue(false),
+          },
+        },
+        {
+          provide: TranslationResolverService,
+          useValue: { batchLoad: jest.fn(), load: jest.fn(), overlay: jest.fn((e: any, t: any) => ({ ...e, ...t })) },
+        },
       ],
     }).compile();
 
@@ -378,7 +389,7 @@ describe('LodgingsService — findPublicLodgings (locale overlay)', () => {
   let service: LodgingsService;
   let lodgingRepo: ReturnType<typeof makeRepo>;
   let translationResolver: jest.Mocked<Pick<TranslationResolverService, 'batchLoad' | 'load' | 'overlay'>>;
-  let subscriptionsService: jest.Mocked<Pick<SubscriptionsService, 'getActiveSubscribedEntityIds'>>;
+  let subscriptionsService: jest.Mocked<Pick<SubscriptionsService, 'getActiveSubscribedEntityIds' | 'getPremiumIdSet'>>;
   let promotionsService: jest.Mocked<Pick<PromotionsService, 'hasActivePromotions' | 'getLatestActivePromotion'>>;
 
   const LODGING_ID_A = '00000000-0000-0000-0000-000000000011';
@@ -405,6 +416,7 @@ describe('LodgingsService — findPublicLodgings (locale overlay)', () => {
     };
     subscriptionsService = {
       getActiveSubscribedEntityIds: jest.fn().mockResolvedValue([LODGING_ID_A, LODGING_ID_B]),
+      getPremiumIdSet: jest.fn().mockResolvedValue(new Set<string>()),
     };
     promotionsService = {
       hasActivePromotions: jest.fn().mockResolvedValue(false),
@@ -433,8 +445,18 @@ describe('LodgingsService — findPublicLodgings (locale overlay)', () => {
         { provide: TermsService, useValue: { getStatusForUser: jest.fn(), getOwnersWithAcceptance: jest.fn() } },
         { provide: DocumentService, useValue: { getEntityDocumentStatus: jest.fn().mockResolvedValue([]) } },
         { provide: DataSource, useValue: { transaction: jest.fn() } },
-        { provide: ResendService, useValue: { sendLodgingSubmittedEmail: jest.fn(), sendAdminLodgingPendingNotification: jest.fn() } },
+        {
+          provide: ResendService,
+          useValue: { sendLodgingSubmittedEmail: jest.fn(), sendAdminLodgingPendingNotification: jest.fn() },
+        },
         { provide: SubscriptionsService, useValue: subscriptionsService },
+        {
+          provide: VerificationService,
+          useValue: {
+            getVerifiedIdSet: jest.fn().mockResolvedValue(new Set()),
+            isVerified: jest.fn().mockResolvedValue(false),
+          },
+        },
         { provide: TranslationResolverService, useValue: translationResolver },
       ],
     }).compile();
@@ -458,7 +480,11 @@ describe('LodgingsService — findPublicLodgings (locale overlay)', () => {
 
     // N+1 guard: exactly ONE batchLoad call regardless of number of lodgings
     expect(translationResolver.batchLoad).toHaveBeenCalledTimes(1);
-    expect(translationResolver.batchLoad).toHaveBeenCalledWith('lodging', expect.arrayContaining([LODGING_ID_A, LODGING_ID_B]), 'en');
+    expect(translationResolver.batchLoad).toHaveBeenCalledWith(
+      'lodging',
+      expect.arrayContaining([LODGING_ID_A, LODGING_ID_B]),
+      'en',
+    );
   });
 
   it('locale=es does NOT call batchLoad (es is canonical, short-circuit)', async () => {
@@ -470,6 +496,33 @@ describe('LodgingsService — findPublicLodgings (locale overlay)', () => {
     await service.findPublicLodgings({ filters: {} as any, locale: 'es' });
 
     expect(translationResolver.batchLoad).toHaveBeenCalledTimes(0);
+  });
+
+  it('freemium: lists free lodgings, ranks Premium first and only queries promotions for Premium', async () => {
+    const lodgingA = makeLodgingWithId(LODGING_ID_A);
+    const lodgingB = makeLodgingWithId(LODGING_ID_B);
+    lodgingRepo.find.mockResolvedValueOnce([lodgingA, lodgingB]);
+    subscriptionsService.getPremiumIdSet.mockResolvedValueOnce(new Set([LODGING_ID_B]));
+
+    const result = await service.findPublicLodgings({ filters: {} as any, locale: 'es' });
+
+    expect(result.map(dto => dto.id)).toEqual([LODGING_ID_B, LODGING_ID_A]);
+    expect(result.map(dto => dto.isPremium)).toEqual([true, false]);
+    expect(promotionsService.hasActivePromotions).toHaveBeenCalledTimes(1);
+    expect(promotionsService.hasActivePromotions).toHaveBeenCalledWith(LODGING_ID_B, 'lodging');
+    // No subscription gate on visibility: the query never filters by subscribed ids
+    expect(subscriptionsService.getActiveSubscribedEntityIds).not.toHaveBeenCalled();
+  });
+
+  it('freemium: an explicit sort chosen by the traveler is respected (no Premium re-ranking)', async () => {
+    const lodgingA = makeLodgingWithId(LODGING_ID_A);
+    const lodgingB = makeLodgingWithId(LODGING_ID_B);
+    lodgingRepo.find.mockResolvedValueOnce([lodgingA, lodgingB]);
+    subscriptionsService.getPremiumIdSet.mockResolvedValueOnce(new Set([LODGING_ID_B]));
+
+    const result = await service.findPublicLodgings({ filters: { sortBy: 'name' } as any, locale: 'es' });
+
+    expect(result.map(dto => dto.id)).toEqual([LODGING_ID_A, LODGING_ID_B]);
   });
 });
 
@@ -532,7 +585,17 @@ describe('LodgingsService — create', () => {
           useValue: { sendBusinessWelcomeEmail: jest.fn().mockResolvedValue(true) },
         },
         { provide: SubscriptionsService, useValue: { getActiveSubscribedEntityIds: jest.fn().mockResolvedValue([]) } },
-        { provide: TranslationResolverService, useValue: { batchLoad: jest.fn(), load: jest.fn(), overlay: jest.fn((e: any, t: any) => ({ ...e, ...t })) } },
+        {
+          provide: VerificationService,
+          useValue: {
+            getVerifiedIdSet: jest.fn().mockResolvedValue(new Set()),
+            isVerified: jest.fn().mockResolvedValue(false),
+          },
+        },
+        {
+          provide: TranslationResolverService,
+          useValue: { batchLoad: jest.fn(), load: jest.fn(), overlay: jest.fn((e: any, t: any) => ({ ...e, ...t })) },
+        },
       ],
     }).compile();
 

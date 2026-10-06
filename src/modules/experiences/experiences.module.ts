@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { CommonModule } from '../common/common.module';
+import { VerificationModule } from '../verification/verification.module';
 import { ExperiencesService } from './experiences.service';
 import { ExperiencesController } from './experiences.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -20,6 +22,8 @@ import { TranslationsModule } from '../translations/translations.module';
   controllers: [ExperiencesController],
   providers: [ExperiencesService],
   imports: [
+    CommonModule,
+    VerificationModule,
     TypeOrmModule.forFeature([Experience, ImageResource, Facility, Category, Guide, Town]),
     CloudinaryModule,
     PromotionsModule,

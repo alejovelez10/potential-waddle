@@ -4,6 +4,7 @@ import { WhatsappClicksService } from './whatsapp-clicks.service';
 import { CreateWhatsappClickDto } from './dto';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { Request } from 'express';
+import { SuperAdmin } from '../auth/decorators';
 
 /**
  * DEPRECATED (MIG-03): superseded by /api/events. Reads are served from the events table
@@ -42,6 +43,7 @@ export class WhatsappClicksController {
   }
 
   @Get('admin/aggregated')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Get aggregated WhatsApp analytics for all entities (Admin panel)', deprecated: true })
   @ApiQuery({ name: 'startDate', required: false, description: 'Start date filter (YYYY-MM-DD)' })
   @ApiQuery({ name: 'endDate', required: false, description: 'End date filter (YYYY-MM-DD)' })
@@ -66,6 +68,7 @@ export class WhatsappClicksController {
   }
 
   @Get('admin/dashboard-stats')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Get WhatsApp clicks by day and entity type for dashboard', deprecated: true })
   @ApiQuery({ name: 'days', required: false, description: 'Number of days to fetch (default 7)' })
   @ApiResponse({ status: 200, description: 'Dashboard stats retrieved successfully' })

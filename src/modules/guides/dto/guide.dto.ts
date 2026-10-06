@@ -246,6 +246,16 @@ export class GuideDto {
   @ApiProperty({ required: false, type: [String] })
   skippedOptionalFields?: string[];
 
+  @ApiProperty({ example: false, description: 'Premium guide (active subscription)', required: false })
+  isPremium?: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Verified by Binntu (documents reviewed) — independent from Premium',
+    required: false,
+  })
+  isVerified?: boolean;
+
   constructor({ data, userReview }: { data: Guide; userReview?: string }) {
     if (!data) return;
 

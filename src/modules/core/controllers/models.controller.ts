@@ -4,6 +4,7 @@ import { SwaggerTags } from 'src/config';
 import { Auth } from 'src/modules/auth/decorators';
 import { CreateModelDto, AdminModelsFiltersDto } from '../dto';
 import { ModelsService } from '../services';
+import { SuperAdmin } from '../../auth/decorators';
 
 @Controller('models')
 @ApiTags(SwaggerTags.Models)
@@ -23,6 +24,7 @@ export class ModelsController {
   // * CREATE NEW MODEL
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @SuperAdmin()
   create(@Body() createModelDto: CreateModelDto) {
     return this.modelsService.create(createModelDto);
   }
@@ -46,6 +48,7 @@ export class ModelsController {
   // * UPDATE MODEL
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @SuperAdmin()
   @ApiOperation({ summary: 'This endpoint is currently disabled' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'This endpoint is disabled' })
   update() {
@@ -55,6 +58,7 @@ export class ModelsController {
   // * DELETE MODEL
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @SuperAdmin()
   @ApiOperation({ summary: 'This endpoint is currently disabled' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'This endpoint is disabled' })
   remove() {
@@ -64,6 +68,7 @@ export class ModelsController {
   // * ADD CATEGORY TO MODEL
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id/categories/:categoryId')
+  @SuperAdmin()
   @ApiOperation({ summary: 'This endpoint is currently disabled' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'This endpoint is disabled' })
   addCategory() {
@@ -73,6 +78,7 @@ export class ModelsController {
   // * REMOVE CATEGORY FROM MODEL
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id/categories/:categoryId')
+  @SuperAdmin()
   @ApiOperation({ summary: 'This endpoint is currently disabled' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'This endpoint is disabled' })
   removeCategory() {
@@ -82,6 +88,7 @@ export class ModelsController {
   // * ADD FACILITY TO MODEL
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id/facilities/:facilityId')
+  @SuperAdmin()
   @ApiOperation({ summary: 'This endpoint is currently disabled' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'This endpoint is disabled' })
   addFacility() {
@@ -91,6 +98,7 @@ export class ModelsController {
   // * REMOVE FACILITY FROM MODEL
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id/facilities/:facilityId')
+  @SuperAdmin()
   @ApiOperation({ summary: 'This endpoint is currently disabled' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'This endpoint is disabled' })
   removeFacility() {

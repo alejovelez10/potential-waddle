@@ -1,3 +1,4 @@
+import { PromotionEntityType } from '../entities/promotion.entity';
 import { IsString, IsNotEmpty, IsDateString, IsNumber, IsIn, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -6,9 +7,9 @@ export class CreatePromotionDto {
   @IsNotEmpty()
   entityId: string;
 
-  @IsIn(['lodging', 'restaurant', 'experience', 'guide'])
+  @IsIn(['lodging', 'restaurant', 'experience', 'guide', 'commerce'])
   @IsNotEmpty()
-  entityType: 'lodging' | 'restaurant' | 'experience' | 'guide';
+  entityType: PromotionEntityType;
 
   @IsString()
   @IsOptional()

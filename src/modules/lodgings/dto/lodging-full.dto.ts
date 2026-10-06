@@ -464,7 +464,7 @@ export class LodgingFullDto {
   @ApiProperty({
     required: false,
     type: Boolean,
-    description: 'True iff info ≥80 + critical + terms not-pendientes + docs not-incompletos. Owner-only.',
+    description: 'True iff info ≥80 + critical + terms not-pendientes (docs only gate verification). Owner-only.',
   })
   readyToSubmit?: boolean;
 

@@ -17,9 +17,11 @@ import {
 } from './controllers';
 import { Town } from '../towns/entities/town.entity';
 import { Category } from '../core/entities/category.entity';
+import { CommonModule } from '../common/common.module';
 
 @Module({
   imports: [
+    CommonModule,
     TypeOrmModule.forFeature([
       DocumentType,
       TownDocumentRequirement,

@@ -11,6 +11,7 @@ describe('EventsController.getEntityAnalytics (BIZ-08 — IDOR gate)', () => {
   let controller: EventsController;
   let ownership: { assertCanRead: jest.Mock };
   let analytics: { getEntityAnalytics: jest.Mock };
+  let subscriptions: { assertPremium: jest.Mock };
 
   const OWNER = { id: 'user-owner' } as any;
   const NON_OWNER = { id: 'user-other' } as any;
@@ -20,7 +21,8 @@ describe('EventsController.getEntityAnalytics (BIZ-08 — IDOR gate)', () => {
   beforeEach(() => {
     ownership = { assertCanRead: jest.fn() };
     analytics = { getEntityAnalytics: jest.fn().mockResolvedValue(SHAPE) };
-    controller = new EventsController({} as any, ownership as any, analytics as any, {} as any);
+    subscriptions = { assertPremium: jest.fn().mockResolvedValue(undefined) };
+    controller = new EventsController({} as any, ownership as any, analytics as any, {} as any, subscriptions as any);
   });
 
   it('owner -> 200 with summary/deltas/trend/byCity/byChannel keys', async () => {
@@ -49,6 +51,27 @@ describe('EventsController.getEntityAnalytics (BIZ-08 — IDOR gate)', () => {
     await controller.getEntityAnalytics(QUERY, OWNER);
     expect(order).toEqual(['assertCanRead', 'getEntityAnalytics']);
   });
+
+  it('freemium: a non-Premium owner gets 403 PREMIUM_REQUIRED and the query is NEVER run', async () => {
+    ownership.assertCanRead.mockResolvedValueOnce({ townId: 'town-1' });
+    subscriptions.assertPremium.mockRejectedValueOnce(new ForbiddenException({ errorCode: 'PREMIUM_REQUIRED' }));
+    await expect(controller.getEntityAnalytics(QUERY, OWNER)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(subscriptions.assertPremium).toHaveBeenCalledWith('lodging', 'l-1', 'analytics');
+    expect(analytics.getEntityAnalytics).not.toHaveBeenCalled();
+  });
+
+  it('freemium: super-admins and town-admins of the entity town skip the Premium check', async () => {
+    const SUPER = { id: 'u-super', isSuperUser: true, towns: [] } as any;
+    const TOWN_ADMIN = { id: 'u-ta', isSuperUser: false, towns: [{ id: 'town-1' }] } as any;
+
+    ownership.assertCanRead.mockResolvedValueOnce({ townId: 'town-9' });
+    await controller.getEntityAnalytics(QUERY, SUPER);
+    ownership.assertCanRead.mockResolvedValueOnce({ townId: 'town-1' });
+    await controller.getEntityAnalytics(QUERY, TOWN_ADMIN);
+
+    expect(subscriptions.assertPremium).not.toHaveBeenCalled();
+    expect(analytics.getEntityAnalytics).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ------------------------------------------------------------------------------------------------
@@ -65,8 +88,8 @@ describe('EventsController.getPlatformAnalytics (PLAT-04 — IDOR gate)', () => 
 
   beforeEach(() => {
     platform = { getPlatformAnalytics: jest.fn().mockResolvedValue(SHAPE) };
-    // positional ctor: (events, ownership, entityAnalytics, platformAnalytics)
-    controller = new EventsController({} as any, {} as any, {} as any, platform as any);
+    // positional ctor: (events, ownership, entityAnalytics, platformAnalytics, subscriptions)
+    controller = new EventsController({} as any, {} as any, {} as any, platform as any, {} as any);
   });
 
   it('town-admin passing town=town-2 -> service receives townIds [town-1] (forced own town, IDOR)', async () => {

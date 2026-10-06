@@ -28,9 +28,12 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { PublicEventsService } from './public-events.service';
 import { CreatePublicEventDto, UpdatePublicEventDto, PublicEventFiltersDto, PublicEventDto } from './dto';
 import { SwaggerTags } from 'src/config';
-import { OptionalAuth } from '../auth/decorators';
+import { Auth, OptionalAuth } from '../auth/decorators';
+import { GetUser } from '../common/decorators';
+import { User } from '../users/entities';
 import { ContentTypes } from '../common/constants';
 import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 @ApiTags(SwaggerTags.PublicEvents)
 @Controller('public-events')
@@ -38,7 +41,7 @@ export class PublicEventsController {
   constructor(private readonly publicEventsService: PublicEventsService) {}
 
   @Post()
-  @OptionalAuth()
+  @Auth()
   @ApiOperation({ summary: 'Create a new public event' })
   @ApiResponse({
     status: 201,
@@ -47,7 +50,11 @@ export class PublicEventsController {
   })
   @ApiBadRequestResponse({ description: 'Invalid input data' })
   @ApiConflictResponse({ description: 'Event with this slug already exists' })
-  create(@Body() createPublicEventDto: CreatePublicEventDto) {
+  create(@Body() createPublicEventDto: CreatePublicEventDto, @GetUser() user: User) {
+    // The event belongs to the caller. Only a super-admin or a town-admin of the event's town
+    // may create it on behalf of another user.
+    const isAdmin = !!user.isSuperUser || (user.towns ?? []).some(t => t.id === createPublicEventDto.townId);
+    if (!isAdmin) createPublicEventDto.userId = user.id;
     return this.publicEventsService.create(createPublicEventDto);
   }
 
@@ -109,7 +116,7 @@ export class PublicEventsController {
   }
 
   @Patch(':id')
-  @OptionalAuth()
+  @EntityAccess('manage', 'public_event', { param: 'id' })
   @ApiOperation({ summary: 'Update a public event' })
   @ApiResponse({
     status: 200,
@@ -123,7 +130,7 @@ export class PublicEventsController {
   }
 
   @Delete(':id')
-  @OptionalAuth()
+  @EntityAccess('manage', 'public_event', { param: 'id' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a public event' })
   @ApiResponse({
@@ -140,7 +147,7 @@ export class PublicEventsController {
   // * ----------------------------------------------------------------------------------------------------------------
 
   @Post(':id/upload-images')
-  @OptionalAuth()
+  @EntityAccess('manage', 'public_event', { param: 'id' })
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiOperation({ summary: 'Upload images for a public event' })
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
@@ -181,7 +188,7 @@ export class PublicEventsController {
   }
 
   @Delete(':id/images/:imageId')
-  @OptionalAuth()
+  @EntityAccess('manage', 'public_event', { param: 'id' })
   @ApiOkResponse({ description: 'Image Deleted' })
   @ApiBadRequestResponse({ description: 'The image cannot be deleted' })
   deleteImage(@Param('id', ParseUUIDPipe) id: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -192,7 +199,7 @@ export class PublicEventsController {
   // * REORDER PUBLIC EVENT IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':id/images/reorder')
-  @OptionalAuth()
+  @EntityAccess('manage', 'public_event', { param: 'id' })
   @ApiOkResponse({ description: 'Images Reordered' })
   @ApiBadRequestResponse({ description: 'The images cannot be reordered' })
   reorderImages(@Param('id', ParseUUIDPipe) id: string, @Body() reorderImagesDto: ReorderImagesDto) {
@@ -200,7 +207,7 @@ export class PublicEventsController {
   }
 
   @Patch(':eventId/images/:imageId/main')
-  @OptionalAuth()
+  @EntityAccess('manage', 'public_event', { param: 'eventId' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Set an image as main for a public event' })
   @ApiResponse({

@@ -241,7 +241,7 @@ export interface LodgingCompletionResult {
   termsStatus?: LodgingTermsStatus;
   docsStatus?: LodgingDocsStatus;
 
-  // Rolled-up submit gate: info ≥80 + critical + terms not-pendientes + docs not-incompletos
+  // Rolled-up submit gate: info ≥80 + critical + terms not-pendientes (docs only gate verification)
   readyToSubmit?: boolean;
 
   // Backwards-compat aliases (= info fields). Kept so existing DTOs/services don't break.
@@ -273,12 +273,12 @@ export function computeLodgingCompletion(
 
   const infoOK = info.infoPercentage >= 80 && info.infoCriticalSatisfied;
   const termsOK = context.termsStatus.state !== 'pendientes';
-  const docsOK = context.docsStatus.state !== 'incompletos';
 
   return {
     ...base,
     termsStatus: context.termsStatus,
     docsStatus: context.docsStatus,
-    readyToSubmit: infoOK && termsOK && docsOK,
+    // Docs are NOT part of the publish gate (freemium) — they only gate the Verified seal.
+    readyToSubmit: infoOK && termsOK,
   };
 }

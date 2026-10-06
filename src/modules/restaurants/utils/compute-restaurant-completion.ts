@@ -49,9 +49,7 @@ export function computeRestaurantInfoCompletion(restaurant: Restaurant): Restaur
 
   // Bucket 3: Price (10)
   const hasLowestPrice =
-    (restaurant.lowestPrice !== null &&
-      restaurant.lowestPrice !== undefined &&
-      Number(restaurant.lowestPrice) > 0) ||
+    (restaurant.lowestPrice !== null && restaurant.lowestPrice !== undefined && Number(restaurant.lowestPrice) > 0) ||
     restaurant.menuNotApplicable === true;
   totalScore += hasLowestPrice ? 10 : 0;
   if (!hasLowestPrice) infoMissingFields.push('lowestPrice');
@@ -182,12 +180,12 @@ export function computeRestaurantCompletion(
 
   const infoOK = info.infoPercentage >= 80 && info.infoCriticalSatisfied;
   const termsOK = context.termsStatus.state !== 'pendientes';
-  const docsOK = context.docsStatus.state !== 'incompletos';
 
   return {
     ...base,
     termsStatus: context.termsStatus,
     docsStatus: context.docsStatus,
-    readyToSubmit: infoOK && termsOK && docsOK,
+    // Docs are NOT part of the publish gate (freemium) — they only gate the Verified seal.
+    readyToSubmit: infoOK && termsOK,
   };
 }

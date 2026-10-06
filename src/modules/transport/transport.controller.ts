@@ -20,13 +20,18 @@ import { UpdateTransportDto } from './dto/update-transport.dto';
 import { Auth, OptionalAuth } from '../auth/decorators';
 import { RestaurantDto } from '../restaurants/dto/restaurant.dto';
 import { GetUser } from '../common/decorators';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 @Controller('transport')
 @ApiTags(SwaggerTags.Transport)
 export class TransportController {
-  constructor(private readonly transportService: TransportService) {}
+  constructor(
+    private readonly transportService: TransportService,
+    private readonly ownership: EntityOwnershipResolver,
+  ) {}
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * CREATE TRANSPORT
@@ -99,6 +104,7 @@ export class TransportController {
   // * UPDATE TRANSPORT
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @EntityAccess('manage', 'transport', { param: 'id' })
   @ApiParam({ name: 'id', type: 'string', description: 'The UUID of the transport' })
   @ApiOkResponse({ description: 'The transport has been successfully updated.', type: TransportDto })
   @ApiConflictResponse({
@@ -122,8 +128,10 @@ export class TransportController {
   // * APPROVE TRANSPORT (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':id/approve')
+  @Auth()
   @ApiOkResponse({ description: 'The transport has been approved.', type: TransportDto })
-  approve(@Param('id', ParseUUIDPipe) id: string) {
+  async approve(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('transport', id, user);
     return this.transportService.approve({ identifier: id });
   }
 
@@ -131,8 +139,10 @@ export class TransportController {
   // * REJECT TRANSPORT (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':id/reject')
+  @Auth()
   @ApiOkResponse({ description: 'The transport has been rejected.', type: TransportDto })
-  reject(@Param('id', ParseUUIDPipe) id: string, @Body() body: { reason: string }) {
+  async reject(@Param('id', ParseUUIDPipe) id: string, @Body() body: { reason: string }, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('transport', id, user);
     return this.transportService.reject({ identifier: id, reason: body.reason });
   }
 
@@ -140,6 +150,7 @@ export class TransportController {
   // * DELETE TRANSPORT
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @EntityAccess('manage', 'transport', { param: 'id' })
   @ApiOperation({ summary: 'Delete a transport' })
   remove(@Param('id') id: string) {
     return this.transportService.remove(id);
@@ -149,6 +160,7 @@ export class TransportController {
   // * BULK DELETE TRANSPORTS (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/bulk-delete')
+  @EntityAccess('moderate', 'transport', { bodyIds: 'ids' })
   @ApiOperation({ summary: 'Bulk delete transports' })
   @ApiOkResponse({ description: 'Count of transports deleted', schema: { example: { deleted: 4 } } })
   bulkDelete(@Body() dto: BulkDeleteTransportDto) {
@@ -159,6 +171,7 @@ export class TransportController {
   // * UPDATE TRANSPORT AVAILABILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':id/availability')
+  @EntityAccess('manage', 'transport', { param: 'id' })
   @ApiOperation({ summary: 'Update transport availability status' })
   @ApiParam({ name: 'id', type: 'string', description: 'The UUID of the transport' })
   @ApiBody({
@@ -178,7 +191,7 @@ export class TransportController {
   // * UPDATE USER IN RESTAURANT
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/users/:userId')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'transport')
   @ApiOkResponse({ description: 'User Updated in Transport', type: RestaurantDto })
   @ApiBadRequestResponse({ description: 'The user cannot be updated in the transport' })
   @ApiConflictResponse({
@@ -193,7 +206,7 @@ export class TransportController {
   // * UPDATE TRANSPORT VISIBILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/visibility')
-  @OptionalAuth()
+  @EntityAccess('manage', 'transport')
   @ApiOkResponse({ description: 'Transport Visibility Updated', type: TransportDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateVisibility(@Param('identifier') identifier: string, @Body() body: { isPublic: boolean }) {

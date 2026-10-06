@@ -47,6 +47,8 @@ import { TermsService } from '../terms/services';
 import { TermsTypeEnum } from '../terms/interfaces';
 import { isTermsEnforcementEnabled } from '../terms/utils';
 import { ResendService } from '../email/services/resend.service';
+import { shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
+import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
 import { TranslationResolverService } from '../translations/translation-resolver.service';
 
@@ -81,6 +83,7 @@ export class LodgingsService {
     private readonly dataSource: DataSource,
     private readonly resendService: ResendService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly verificationService: VerificationService,
     private readonly translationResolver: TranslationResolverService,
   ) {}
 
@@ -90,13 +93,9 @@ export class LodgingsService {
   async findAll({ filters }: LodgingFindAllParams = {}) {
     const { where, order } = generateLodgingQueryFilters(filters);
 
-    // Public lists are gated by THREE invariants:
+    // Public lists are gated by TWO invariants (freemium: no subscription required):
     //   1. status = 'published' (admin-approved)
     //   2. isPublic = true       (owner-toggled visibility)
-    //   3. active subscription   (paid or admin-granted)
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('lodging');
-    if (subscribedIds.length === 0) return [];
-    where.id = In(subscribedIds);
     where.status = 'published';
     where.isPublic = true;
 
@@ -206,12 +205,9 @@ export class LodgingsService {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateLodgingQueryFilters(filters);
 
-    // Active-subscription gate. forced_public (super admin) la salta.
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('lodging');
-    // Sin early-return: aunque no haya suscripciones, los forced_public deben mostrarse.
-
-    // Obtener lodgings y reviews del usuario en paralelo
-    const [lodgings, userReviews] = await Promise.all([
+    // Freemium: published + isPublic (no subscription required). forced_public (super admin) lo salta.
+    // Obtener lodgings, reviews del usuario y negocios Premium en paralelo
+    const [lodgings, userReviews, premiumIds] = await Promise.all([
       this.lodgingRespository.find({
         relations: {
           town: { department: true },
@@ -219,13 +215,10 @@ export class LodgingsService {
           images: { imageResource: true },
         },
         order,
-        where:
-          subscribedIds.length > 0
-            ? [
-                { ...where, status: 'published' as const, isPublic: true, id: In(subscribedIds) },
-                { ...where, forcedPublic: true },
-              ]
-            : [{ ...where, forcedPublic: true }],
+        where: [
+          { ...where, status: 'published' as const, isPublic: true },
+          { ...where, forcedPublic: true },
+        ],
       }),
       user
         ? this.entityReviewsService.getUserReviews({
@@ -233,6 +226,7 @@ export class LodgingsService {
             userId: user.id,
           })
         : Promise.resolve<Review[]>([]),
+      this.subscriptionsService.getPremiumIdSet('lodging'),
     ]);
 
     // Only randomize if no specific order was requested
@@ -240,14 +234,21 @@ export class LodgingsService {
     if (shouldRandomize) {
       sortedLodgings = lodgings.sort(() => Math.random() - 0.5);
     }
+    // Premium gets more exposure on the default ordering (freemium)
+    if (shouldRankPremiumFirst(filters?.sortBy)) {
+      sortedLodgings = sortPremiumFirst(sortedLodgings, premiumIds);
+    }
 
-    // Check for active promotions for each lodging
+    // Promotions are a Premium benefit: only Premium lodgings expose them
     const lodgingsWithPromotions = await Promise.all(
       sortedLodgings.map(async lodging => {
-        const hasPromotions = await this.promotionsService.hasActivePromotions(lodging.id, 'lodging');
-        const latestPromotion = await this.promotionsService.getLatestActivePromotion(lodging.id, 'lodging');
+        const isPremium = premiumIds.has(lodging.id);
+        const hasPromotions = isPremium && (await this.promotionsService.hasActivePromotions(lodging.id, 'lodging'));
+        const latestPromotion = isPremium
+          ? await this.promotionsService.getLatestActivePromotion(lodging.id, 'lodging')
+          : null;
         const userReview = userReviews.find(r => r.lodging?.id === lodging.id);
-        return { lodging, hasPromotions, latestPromotion, userReview };
+        return { lodging, hasPromotions, latestPromotion, userReview, isPremium };
       }),
     );
 
@@ -264,14 +265,23 @@ export class LodgingsService {
       categoryTranslations = await this.translationResolver.batchLoad('category', categoryIds, locale);
     }
 
-    return lodgingsWithPromotions.map(({ lodging, hasPromotions, latestPromotion, userReview }) => {
-      const base = locale !== 'es' ? this.translationResolver.overlay({ ...lodging }, translationsMap.get(lodging.id) ?? {}) : lodging;
+    const verifiedIds = await this.verificationService.getVerifiedIdSet('lodging');
+    return lodgingsWithPromotions.map(({ lodging, hasPromotions, latestPromotion, userReview, isPremium }) => {
+      const base =
+        locale !== 'es'
+          ? this.translationResolver.overlay({ ...lodging }, translationsMap.get(lodging.id) ?? {})
+          : lodging;
       if (locale !== 'es') {
-        (base as Lodging).categories = this.translationResolver.overlayCollection(lodging.categories ?? [], categoryTranslations);
+        (base as Lodging).categories = this.translationResolver.overlayCollection(
+          lodging.categories ?? [],
+          categoryTranslations,
+        );
       }
       const dto = new LodgingIndexDto(base as Lodging, userReview?.id);
       dto.hasPromotions = hasPromotions;
       dto.latestPromotionValue = latestPromotion?.value;
+      dto.isPremium = isPremium;
+      dto.isVerified = verifiedIds.has(lodging.id);
       return dto;
     });
   }
@@ -282,9 +292,6 @@ export class LodgingsService {
   async findPublicFullInfoLodgings({ filters }: LodgingFindAllParams = {}) {
     const shouldRandomize = filters?.sortBy === 'random';
     const { where, order } = generateLodgingQueryFilters(filters);
-
-    const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds('lodging');
-    if (subscribedIds.length === 0) return [];
 
     let lodgings = await this.lodgingRespository.find({
       relations: {
@@ -302,7 +309,6 @@ export class LodgingsService {
         ...where,
         status: 'published' as const,
         isPublic: true,
-        id: In(subscribedIds),
       },
     });
 
@@ -449,11 +455,12 @@ export class LodgingsService {
     if (!lodging) lodging = await this.lodgingRespository.findOne({ where: { slug, status: 'published' }, relations });
     if (!lodging) throw new NotFoundException('Lodging not found');
 
-    // Check for active promotions and user review
+    // Promotions are a Premium benefit: only Premium lodgings expose them
+    const isPremium = await this.subscriptionsService.isPremium('lodging', lodging.id);
     const [hasPromotions, latestPromotion, activePromotions, userReview] = await Promise.all([
-      this.promotionsService.hasActivePromotions(lodging.id, 'lodging'),
-      this.promotionsService.getLatestActivePromotion(lodging.id, 'lodging'),
-      this.promotionsService.getActivePromotions(lodging.id, 'lodging'),
+      isPremium ? this.promotionsService.hasActivePromotions(lodging.id, 'lodging') : false,
+      isPremium ? this.promotionsService.getLatestActivePromotion(lodging.id, 'lodging') : null,
+      isPremium ? this.promotionsService.getActivePromotions(lodging.id, 'lodging') : [],
       user
         ? this.entityReviewsService.findUserReview({
             entityType: ReviewDomainsEnum.LODGINGS,
@@ -474,17 +481,33 @@ export class LodgingsService {
 
     if (locale !== 'es') {
       const [categoryTranslations, facilityTranslations] = await Promise.all([
-        this.translationResolver.batchLoad('category', (lodging.categories ?? []).map(c => c.id), locale),
-        this.translationResolver.batchLoad('facility', (lodging.facilities ?? []).map(f => f.id), locale),
+        this.translationResolver.batchLoad(
+          'category',
+          (lodging.categories ?? []).map(c => c.id),
+          locale,
+        ),
+        this.translationResolver.batchLoad(
+          'facility',
+          (lodging.facilities ?? []).map(f => f.id),
+          locale,
+        ),
       ]);
-      (base as Lodging).categories = this.translationResolver.overlayCollection(lodging.categories ?? [], categoryTranslations);
-      (base as Lodging).facilities = this.translationResolver.overlayCollection(lodging.facilities ?? [], facilityTranslations);
+      (base as Lodging).categories = this.translationResolver.overlayCollection(
+        lodging.categories ?? [],
+        categoryTranslations,
+      );
+      (base as Lodging).facilities = this.translationResolver.overlayCollection(
+        lodging.facilities ?? [],
+        facilityTranslations,
+      );
     }
 
     const dto = new LodgingFullDto(base as Lodging, userReview?.id);
     (dto as any).hasPromotions = hasPromotions;
     (dto as any).latestPromotionValue = latestPromotion?.value;
     (dto as any).activePromotions = activePromotions;
+    (dto as any).isPremium = isPremium;
+    (dto as any).isVerified = await this.verificationService.isVerified('lodging', lodging.id);
 
     return dto;
   }
@@ -825,6 +848,14 @@ export class LodgingsService {
 
     if (!lodging) throw new NotFoundException('Lodging not found');
 
+    // Freemium photo capacity (Free 10 / Premium 30)
+    await this.subscriptionsService.assertPhotoCapacity(
+      'lodging',
+      lodging.id,
+      lodging.images?.length ?? 0,
+      files?.length ?? 0,
+    );
+
     try {
       // Process each file in the array
       const uploadPromises = files.map(async (file, index) => {
@@ -1023,7 +1054,7 @@ export class LodgingsService {
     //    Each gate throws a distinct errorCode so the frontend can route to the right UI:
     //    - INCOMPLETE       → wizard step with infoMissingFields
     //    - TERMS_NOT_ACCEPTED → T&C acceptance screen (legacy errorCode kept for FE compat)
-    //    - DOCS_INCOMPLETE  → Documentos step with missing list
+    //    (Docs are NOT a publish gate — freemium: they only gate the Verified seal.)
     const context = await this.resolveOwnerCompletionContext(lodging);
     const completion = computeLodgingCompletion(lodging, context);
 
@@ -1045,14 +1076,6 @@ export class LodgingsService {
         errorCode: 'TERMS_NOT_ACCEPTED',
         termsType: 'lodging',
         activeTermsId: context.termsStatus.activeTermsId ?? null,
-      });
-    }
-
-    // 4c. Docs gate — block when required docs are missing or expired
-    if (context.docsStatus.state === 'incompletos') {
-      throw new BadRequestException({
-        errorCode: 'DOCS_INCOMPLETE',
-        docsStatus: context.docsStatus,
       });
     }
 

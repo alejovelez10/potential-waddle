@@ -88,6 +88,22 @@ export class TransportDto {
   })
   rejectionReason?: string | null;
 
+  @ApiProperty({ example: false, description: 'Premium transport (active subscription)', required: false })
+  isPremium?: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Verified by Binntu (documents reviewed) — independent from Premium',
+    required: false,
+  })
+  isVerified?: boolean;
+
+  // Premium "información ampliada". Hidden on public responses when the transport isn't Premium.
+  vehicleModel?: string | null;
+  capacity?: number | null;
+  services?: string | null;
+  coverageTowns?: TownDto[];
+
   constructor({ data, userReview }: { data: Transport; userReview?: string }) {
     if (!data) return;
 
@@ -119,5 +135,17 @@ export class TransportDto {
     this.userReview = userReview;
     this.status = data.status;
     this.rejectionReason = data.rejectionReason ?? null;
+    this.vehicleModel = data.vehicleModel ?? null;
+    this.capacity = data.capacity ?? null;
+    this.services = data.services ?? null;
+    this.coverageTowns = data.coverageTowns?.map(town => new TownDto(town));
+  }
+
+  /** Public responses for non-Premium transports don't expose the Premium extended info. */
+  hideExtendedInfo() {
+    this.vehicleModel = null;
+    this.capacity = null;
+    this.services = null;
+    this.coverageTowns = [];
   }
 }

@@ -75,6 +75,7 @@ export class DocumentService {
       townSlug: town.slug,
       entityType: createDto.entityType,
       entityId: createDto.entityId,
+      isPrivate: true,
     });
 
     // Create document record
@@ -93,6 +94,15 @@ export class DocumentService {
     });
 
     return this.documentRepository.save(document);
+  }
+
+  /**
+   * Copy of the document whose `url` is a short-lived signed URL (identity/legal documents must
+   * never be exposed through their raw bucket URL). Falls back to the stored URL if signing fails.
+   */
+  async withSignedUrl(document: Document): Promise<Document> {
+    const signedUrl = document.gcpPath ? await this.gcpStorageService.getSignedReadUrl(document.gcpPath) : null;
+    return { ...document, url: signedUrl ?? document.url };
   }
 
   async findByEntity(entityType: DocumentEntityType, entityId: string): Promise<Document[]> {
@@ -185,6 +195,9 @@ export class DocumentService {
     const documentMap = new Map(documents.map(d => [d.documentTypeId, d]));
 
     const now = new Date();
+    const signedUrls = new Map(
+      await Promise.all(documents.map(async d => [d.id, (await this.withSignedUrl(d)).url] as const)),
+    );
 
     return filteredRequirements.map(req => {
       const document = documentMap.get(req.documentTypeId);
@@ -209,7 +222,7 @@ export class DocumentService {
               entityType: document.entityType,
               entityId: document.entityId,
               fileName: document.fileName,
-              url: document.url,
+              url: signedUrls.get(document.id) ?? document.url,
               mimeType: document.mimeType,
               size: document.size,
               expirationDate: document.expirationDate,

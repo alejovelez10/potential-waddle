@@ -30,6 +30,7 @@ import { ContentTypes } from 'src/modules/common/constants';
 import { Auth } from '../../auth/decorators';
 import { RequestLocale } from '../../translations/request-locale.decorator';
 import { TranslationResolverService } from '../../translations/translation-resolver.service';
+import { SuperAdmin } from '../../auth/decorators';
 
 @Controller('categories')
 @ApiTags(SwaggerTags.Categories)
@@ -42,7 +43,7 @@ export class CategoriesController {
   // * CREATE NEW CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
-  @Auth()
+  @SuperAdmin()
   create(@Body() createCategoryDto: CreateCategoryDto) {
     return this.categoriesService.create(createCategoryDto);
   }
@@ -83,10 +84,12 @@ export class CategoriesController {
   ) {
     const categories = await this.categoriesService.findAll({ model, onlyEnabled, onlyAsigned });
     if (locale === 'es' || !categories.length) return categories;
-    const translationsMap = await this.translationResolver.batchLoad('category', categories.map(c => c.id), locale);
-    return categories.map(cat =>
-      this.translationResolver.overlay({ ...cat }, translationsMap.get(cat.id) ?? {}),
+    const translationsMap = await this.translationResolver.batchLoad(
+      'category',
+      categories.map(c => c.id),
+      locale,
     );
+    return categories.map(cat => this.translationResolver.overlay({ ...cat }, translationsMap.get(cat.id) ?? {}));
   }
   // * -------------------------------------------------------------------------------------------------------------
   // * GET ALL CATEGORIES (FULL)
@@ -134,7 +137,7 @@ export class CategoriesController {
   // * UPDATE CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
-  @Auth()
+  @SuperAdmin()
   @ApiOperation({ summary: 'Update a category' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })
   @ApiResponse({
@@ -151,7 +154,7 @@ export class CategoriesController {
   // * DELETE CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
-  @Auth()
+  @SuperAdmin()
   @ApiOperation({ summary: 'Delete a category' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })
   @ApiResponse({
@@ -177,6 +180,7 @@ export class CategoriesController {
   // * UPLOAD CATEGORY IMAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Post(':id/upload-image')
+  @SuperAdmin()
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Upload an image for a category' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })
@@ -207,6 +211,7 @@ export class CategoriesController {
   // * DELETE CATEGORY IMAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id/image')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Delete category image' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })
   @ApiResponse({

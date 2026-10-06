@@ -7,6 +7,7 @@ import { Restaurant } from '../restaurants/entities';
 import { Experience } from '../experiences/entities';
 import { Review } from '../reviews/entities';
 import { HomeItemDto, HomeDataDto } from './dto';
+import { SubscriptionsService } from '../subscriptions/services';
 
 const HOME_ITEMS_LIMIT = 6;
 
@@ -26,6 +27,7 @@ export class HomeService {
     private readonly experienceRepository: Repository<Experience>,
     @InjectRepository(Review)
     private readonly reviewRepository: Repository<Review>,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   async getHomeData(tenantId?: string | null, userId?: string): Promise<HomeDataDto> {
@@ -121,7 +123,7 @@ export class HomeService {
     }));
   }
 
-  private findRandom<T extends ObjectLiteral>(
+  private async findRandom<T extends ObjectLiteral>(
     repository: Repository<T>,
     alias: HomeEntityAlias,
     tenantId?: string | null,
@@ -133,9 +135,30 @@ export class HomeService {
       .where(`${alias}.isPublic = :isPublic`, { isPublic: true })
       .setParameter('imageIsPublic', true);
 
+    // Businesses must be admin-approved, same gate as the public lists (places have no workflow).
+    if (alias !== 'place') {
+      query.andWhere(`(${alias}.status = :published OR ${alias}.forcedPublic = :forced)`, {
+        published: 'published',
+        forced: true,
+      });
+    }
+
     // Scope to the current tenant's town (apex / no tenant → unfiltered).
     if (tenantId) {
       query.innerJoin(`${alias}.town`, 'town').andWhere('town.id = :tenantId', { tenantId });
+    }
+
+    // Freemium: Premium businesses are featured first; the rest of the slots stay random.
+    if (alias !== 'place') {
+      const premiumIds = [...(await this.subscriptionsService.getPremiumIdSet(alias))];
+      if (premiumIds.length) {
+        query
+          .addSelect(`CASE WHEN ${alias}.id IN (:...premiumIds) THEN 0 ELSE 1 END`, 'premium_rank')
+          .setParameter('premiumIds', premiumIds)
+          .orderBy('premium_rank', 'ASC')
+          .addOrderBy('RANDOM()');
+        return query.limit(HOME_ITEMS_LIMIT).getMany();
+      }
     }
 
     return query.orderBy('RANDOM()').limit(HOME_ITEMS_LIMIT).getMany();
@@ -182,7 +205,11 @@ export class HomeService {
     return names;
   }
 
-  private async findUserReviewIds(alias: HomeEntityAlias, ids: string[], userId?: string): Promise<Map<string, string>> {
+  private async findUserReviewIds(
+    alias: HomeEntityAlias,
+    ids: string[],
+    userId?: string,
+  ): Promise<Map<string, string>> {
     const reviewIds = new Map<string, string>();
     if (!userId || !ids.length) return reviewIds;
 

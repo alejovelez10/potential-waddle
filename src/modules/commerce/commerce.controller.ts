@@ -14,6 +14,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 import { SwaggerTags } from 'src/config';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -34,6 +35,7 @@ import { Auth, OptionalAuth } from '../auth/decorators';
 import { CommerceService } from './commerce.service';
 import { CommerceFilters, CommerceListQueryParamsDocs } from './decorators';
 import { GetUser } from '../common/decorators';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { RequestLocale } from '../translations/request-locale.decorator';
@@ -41,7 +43,10 @@ import { RequestLocale } from '../translations/request-locale.decorator';
 @Controller(SwaggerTags.Commerce)
 @ApiTags(SwaggerTags.Commerce)
 export class CommerceController {
-  constructor(private readonly commerceService: CommerceService) {}
+  constructor(
+    private readonly commerceService: CommerceService,
+    private readonly ownership: EntityOwnershipResolver,
+  ) {}
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * GET ALL COMMERCE
@@ -119,7 +124,8 @@ export class CommerceController {
   @Post('admin/:identifier/approve')
   @Auth()
   @ApiOkResponse({ description: 'Commerce approved', type: CommerceFullDto })
-  approve(@Param('identifier') identifier: string) {
+  async approve(@Param('identifier') identifier: string, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('commerce', identifier, user);
     return this.commerceService.approve({ identifier });
   }
 
@@ -129,7 +135,8 @@ export class CommerceController {
   @Post('admin/:identifier/reject')
   @Auth()
   @ApiOkResponse({ description: 'Commerce rejected', type: CommerceFullDto })
-  reject(@Param('identifier') identifier: string, @Body() body: { reason: string }) {
+  async reject(@Param('identifier') identifier: string, @Body() body: { reason: string }, @GetUser() user: User) {
+    await this.ownership.assertCanModerate('commerce', identifier, user);
     return this.commerceService.reject({ identifier, reason: body.reason });
   }
 
@@ -157,7 +164,7 @@ export class CommerceController {
   // * UPDATE COMMERCE
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier')
-  @OptionalAuth()
+  @EntityAccess('manage', 'commerce')
   @ApiOkResponse({ description: 'Commerce Updated', type: CommerceFullDto })
   update(@Param('identifier') identifier: string, @Body() updateCommerceDto: UpdateCommerceDto) {
     return this.commerceService.update(identifier, updateCommerceDto);
@@ -167,7 +174,7 @@ export class CommerceController {
   // * DELETE COMMERCE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier')
-  @OptionalAuth()
+  @EntityAccess('manage', 'commerce')
   @ApiOkResponse({ description: 'Commerce Deleted' })
   deleteCommerce(@Param('identifier') identifier: string) {
     return this.commerceService.delete(identifier);
@@ -177,7 +184,7 @@ export class CommerceController {
   // * BULK DELETE COMMERCES (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/bulk-delete')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'commerce', { bodyIds: 'ids' })
   @ApiOkResponse({ description: 'Count of commerces deleted', schema: { example: { deleted: 4 } } })
   bulkDelete(@Body() dto: BulkDeleteCommerceDto) {
     return this.commerceService.bulkDelete(dto.ids);
@@ -187,7 +194,7 @@ export class CommerceController {
   // * UPDATE USER IN COMMERCE
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/users/:userId')
-  @OptionalAuth()
+  @EntityAccess('moderate', 'commerce')
   @ApiOkResponse({ description: 'User Updated in Commerce', type: CommerceFullDto })
   @ApiBadRequestResponse({ description: 'The user cannot be updated in the commerce' })
   updateUser(@Param('identifier') identifier: string, @Param('userId', ParseUUIDPipe) userId: string) {
@@ -198,7 +205,7 @@ export class CommerceController {
   // * UPDATE COMMERCE VISIBILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/visibility')
-  @OptionalAuth()
+  @EntityAccess('manage', 'commerce')
   @ApiOkResponse({ description: 'Commerce Visibility Updated', type: CommerceFullDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateVisibility(@Param('identifier') identifier: string, @Body() body: { isPublic: boolean }) {
@@ -209,7 +216,7 @@ export class CommerceController {
   // * UPDATE COMMERCE GOOGLE MAPS REVIEWS VISIBILITY
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/show-google-maps-reviews')
-  @OptionalAuth()
+  @EntityAccess('manage', 'commerce')
   @ApiOkResponse({ description: 'Commerce Google Maps Reviews Visibility Updated', type: CommerceFullDto })
   @ApiBadRequestResponse({ description: 'The visibility cannot be updated' })
   updateShowGoogleMapsReviews(
@@ -223,7 +230,7 @@ export class CommerceController {
   // * UPLOAD COMMERCE IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/upload-images')
-  @OptionalAuth()
+  @EntityAccess('manage', 'commerce')
   @UseInterceptors(FilesInterceptor('files', 10))
   @ApiConsumes(ContentTypes.MULTIPART_FORM_DATA)
   @ApiBody({
@@ -263,7 +270,7 @@ export class CommerceController {
   // * DELETE COMMERCE IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':identifier/images/:imageId')
-  @OptionalAuth()
+  @EntityAccess('manage', 'commerce')
   @ApiOkResponse({ description: 'Image Deleted' })
   @ApiBadRequestResponse({ description: 'The image cannot be deleted' })
   deleteImage(@Param('identifier') identifier: string, @Param('imageId', ParseUUIDPipe) imageId: string) {
@@ -274,7 +281,7 @@ export class CommerceController {
   // * REORDER COMMERCE IMAGES
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':identifier/images/reorder')
-  @OptionalAuth()
+  @EntityAccess('manage', 'commerce')
   @ApiOkResponse({ description: 'Images Reordered' })
   @ApiBadRequestResponse({ description: 'The images cannot be reordered' })
   reorderImages(@Param('identifier') identifier: string, @Body() reorderImagesDto: ReorderImagesDto) {

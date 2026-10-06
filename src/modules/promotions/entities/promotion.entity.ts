@@ -1,5 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
+export type PromotionEntityType = 'lodging' | 'restaurant' | 'experience' | 'guide' | 'commerce';
+
 @Entity()
 @Index(['entityType', 'entityId'])
 export class Promotion {
@@ -10,7 +12,7 @@ export class Promotion {
   entityId: string;
 
   @Column({ name: 'entity_type' })
-  entityType: 'lodging' | 'restaurant' | 'experience' | 'guide';
+  entityType: PromotionEntityType;
 
   @Column({ name: 'entity_slug', nullable: true })
   entitySlug?: string;

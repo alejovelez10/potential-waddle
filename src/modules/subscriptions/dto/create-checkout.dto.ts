@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   IsArray,
   IsEnum,
@@ -8,7 +8,7 @@ import {
   IsString,
   IsNotEmpty,
   IsOptional,
-  IsDateString,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { EntityType } from '../entities';
@@ -34,21 +34,15 @@ export class CheckoutItemDto {
   @IsNotEmpty()
   entityName: string;
 
-  @ApiPropertyOptional({
-    example: '2026-06-12',
-    description: 'Requested subscription start date (YYYY-MM-DD). If omitted, server uses payment date.',
+  @ApiProperty({
+    example: false,
+    required: false,
+    description:
+      '"Registro asistido Premium": allows paying while the business is still a draft (the Binntu team helps complete it). Otherwise the business must be published first.',
   })
   @IsOptional()
-  @IsDateString()
-  startDate?: string;
-
-  @ApiPropertyOptional({
-    example: '2027-06-12',
-    description: 'Requested subscription end date (YYYY-MM-DD). If omitted, server uses plan billingInterval.',
-  })
-  @IsOptional()
-  @IsDateString()
-  endDate?: string;
+  @IsBoolean()
+  assisted?: boolean;
 }
 
 export class CreateCheckoutDto {

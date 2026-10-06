@@ -43,6 +43,15 @@ export class Transport {
   @OneToMany(() => Review, review => review.transport)
   reviews?: Review[];
 
+  /** Premium "información ampliada": towns where the transporter offers the service. */
+  @ManyToMany(() => Town)
+  @JoinTable({
+    name: 'transport_coverage_town',
+    joinColumn: { name: 'transport_id' },
+    inverseJoinColumn: { name: 'town_id' },
+  })
+  coverageTowns?: Town[];
+
   // * ----------------------------------------------------------------------------------------------------------------
   // * MAIN FIELDS
   // * ----------------------------------------------------------------------------------------------------------------
@@ -99,6 +108,16 @@ export class Transport {
 
   @Column('text', { name: 'license_plate', nullable: false })
   licensePlate: string;
+
+  // Premium "información ampliada" (freemium 2026-10)
+  @Column('varchar', { name: 'vehicle_model', length: 120, nullable: true })
+  vehicleModel: string | null;
+
+  @Column('integer', { name: 'capacity', nullable: true })
+  capacity: number | null;
+
+  @Column('text', { name: 'services', nullable: true })
+  services: string | null;
 
   @Column('text', { name: 'payment_methods', array: true, nullable: true })
   paymentMethods: string[] | null;

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 import { Auth } from '../auth/decorators';
 import { GetUser } from '../common/decorators';
@@ -40,7 +41,7 @@ export class TranslationsController {
   // IDOR-guarded in TranslationSeedingService.overrideTranslation (MT-02, T-28-02).
   // ---------------------------------------------------------------------------
   @Patch('entities/:entityType/:entityId/override')
-  @Auth()
+  @EntityAccess('manage', 'param:entityType', { param: 'entityId' })
   override(
     @Param('entityType') entityType: string,
     @Param('entityId') entityId: string,
@@ -62,7 +63,7 @@ export class TranslationsController {
   // IDOR-guarded in TranslationSeedingService.seedOnDemand (T-28-04).
   // ---------------------------------------------------------------------------
   @Post('entities/:entityType/:entityId/seed')
-  @Auth()
+  @EntityAccess('manage', 'param:entityType', { param: 'entityId' })
   seed(
     @Param('entityType') entityType: string,
     @Param('entityId') entityId: string,

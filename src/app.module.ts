@@ -38,6 +38,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
 import { TenantInterceptor } from './modules/tenant/tenant.interceptor';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { VerificationModule } from './modules/verification/verification.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { TermsModule } from './modules/terms/terms.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -95,6 +96,7 @@ import { TranslationsModule } from './modules/translations/translations.module';
     TenantModule,
     DocumentsModule,
     SubscriptionsModule,
+    VerificationModule,
     AnalyticsModule,
     TermsModule,
     NotificationsModule,

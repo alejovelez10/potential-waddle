@@ -279,6 +279,16 @@ export class LodgingIndexDto {
   })
   latestPromotionValue?: number;
 
+  @ApiProperty({ example: false, description: 'Premium business (active subscription)', required: false })
+  isPremium?: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Verified by Binntu (documents reviewed) — independent from Premium',
+    required: false,
+  })
+  isVerified?: boolean;
+
   constructor(lodging?: Lodging, userReview?: string) {
     if (!lodging) return;
     this.id = lodging.id;

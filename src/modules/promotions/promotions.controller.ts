@@ -10,6 +10,7 @@ import {
   UploadedFile,
   ParseIntPipe,
   Query,
+  NotFoundException,
 } from '@nestjs/common';
 import { PromotionsService } from './promotions.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
@@ -17,14 +18,22 @@ import { UpdatePromotionDto } from './dto/update-promotion.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiConsumes, ApiBody, ApiOperation, ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import { SwaggerTags } from 'src/config/swagger-tags.enum';
-import { Promotion } from './entities/promotion.entity';
+import { Promotion, PromotionEntityType } from './entities/promotion.entity';
+import { Auth } from '../auth/decorators';
+import { GetUser } from '../common/decorators';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
+import { User } from '../users/entities';
 
 @Controller('promotions')
 @ApiTags(SwaggerTags.Promotions)
 export class PromotionsController {
-  constructor(private readonly promotionsService: PromotionsService) {}
+  constructor(
+    private readonly promotionsService: PromotionsService,
+    private readonly ownership: EntityOwnershipResolver,
+  ) {}
 
   @Post()
+  @Auth()
   @ApiOperation({ summary: 'Create a new promotion' })
   @ApiCreatedResponse({
     description: 'The promotion has been successfully created.',
@@ -43,7 +52,7 @@ export class PromotionsController {
         },
         entityType: {
           type: 'string',
-          enum: ['lodging', 'restaurant', 'experience', 'guide'],
+          enum: ['lodging', 'restaurant', 'experience', 'guide', 'commerce'],
           example: 'lodging',
           description: 'The type of entity this promotion belongs to',
         },
@@ -82,7 +91,12 @@ export class PromotionsController {
       },
     },
   })
-  create(@Body() createPromotionDto: CreatePromotionDto, @UploadedFile() file: Express.Multer.File) {
+  async create(
+    @Body() createPromotionDto: CreatePromotionDto,
+    @UploadedFile() file: Express.Multer.File,
+    @GetUser() user: User,
+  ) {
+    await this.ownership.assertCanManage(createPromotionDto.entityType, createPromotionDto.entityId, user);
     return this.promotionsService.create(createPromotionDto, file);
   }
 
@@ -92,10 +106,7 @@ export class PromotionsController {
     description: 'The promotions have been successfully retrieved.',
     type: [Promotion],
   })
-  findAll(
-    @Query('entityId') entityId?: string,
-    @Query('entityType') entityType?: 'lodging' | 'restaurant' | 'experience' | 'guide',
-  ) {
+  findAll(@Query('entityId') entityId?: string, @Query('entityType') entityType?: PromotionEntityType) {
     return this.promotionsService.findAll(entityId, entityType);
   }
 
@@ -110,6 +121,7 @@ export class PromotionsController {
   }
 
   @Patch(':id')
+  @Auth()
   @ApiOperation({ summary: 'Update a promotion' })
   @ApiOkResponse({
     description: 'The promotion has been successfully updated.',
@@ -128,7 +140,7 @@ export class PromotionsController {
         },
         entityType: {
           type: 'string',
-          enum: ['lodging', 'restaurant', 'experience', 'guide'],
+          enum: ['lodging', 'restaurant', 'experience', 'guide', 'commerce'],
           example: 'lodging',
           description: 'The type of entity this promotion belongs to',
         },
@@ -167,18 +179,31 @@ export class PromotionsController {
       },
     },
   })
-  update(
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updatePromotionDto: UpdatePromotionDto,
+    @GetUser() user: User,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    const promotion = await this.promotionsService.findOne(id);
+    if (!promotion) throw new NotFoundException('Promotion not found');
+    await this.ownership.assertCanManage(promotion.entityType, promotion.entityId, user);
+    // Moving a promotion to another entity requires rights over the target too.
+    if (updatePromotionDto.entityId && updatePromotionDto.entityId !== promotion.entityId) {
+      const targetType = updatePromotionDto.entityType ?? promotion.entityType;
+      await this.ownership.assertCanManage(targetType, updatePromotionDto.entityId, user);
+    }
     return this.promotionsService.update(id, updatePromotionDto, file);
   }
 
   @Delete(':id')
+  @Auth()
   @ApiOperation({ summary: 'Delete a promotion' })
   @ApiOkResponse({ description: 'The promotion has been successfully deleted.' })
-  remove(@Param('id', ParseIntPipe) id: number) {
+  async remove(@Param('id', ParseIntPipe) id: number, @GetUser() user: User) {
+    const promotion = await this.promotionsService.findOne(id);
+    if (!promotion) throw new NotFoundException('Promotion not found');
+    await this.ownership.assertCanManage(promotion.entityType, promotion.entityId, user);
     return this.promotionsService.remove(id);
   }
 }

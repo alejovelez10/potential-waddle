@@ -15,20 +15,26 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SwaggerTags } from 'src/config';
-import { Auth } from 'src/modules/auth/decorators';
+import { Auth, SuperAdmin } from 'src/modules/auth/decorators';
+import { GetUser } from 'src/modules/common/decorators';
+import { EntityOwnershipResolver } from 'src/modules/common/services/entity-ownership.resolver';
+import { User } from 'src/modules/users/entities';
 import { CreateBadgeDto, UpdateBadgeDto, AdminBadgesFiltersDto } from '../dto';
 import { BadgesService, BadgeEntityType } from '../services';
 
 @Controller('badges')
 @ApiTags(SwaggerTags.Badges)
 export class BadgesController {
-  constructor(private readonly badgesService: BadgesService) {}
+  constructor(
+    private readonly badgesService: BadgesService,
+    private readonly ownership: EntityOwnershipResolver,
+  ) {}
 
   // * -------------------------------------------------------------------------------------------------------------
   // * GET ALL BADGES PAGINATED (ADMIN)
   // * -------------------------------------------------------------------------------------------------------------
   @Get('admin/list')
-  @Auth()
+  @SuperAdmin()
   getAdminList(@Query() filters: AdminBadgesFiltersDto) {
     return this.badgesService.findAllPaginated(filters);
   }
@@ -37,7 +43,7 @@ export class BadgesController {
   // * CREATE NEW BADGE
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
-  @Auth()
+  @SuperAdmin()
   create(@Body() createBadgeDto: CreateBadgeDto) {
     return this.badgesService.create(createBadgeDto);
   }
@@ -65,11 +71,13 @@ export class BadgesController {
   @Put('entity/:entityType/:entityId')
   @Auth()
   @ApiOperation({ summary: 'Assign badges to an entity (replaces existing)' })
-  assignBadges(
+  async assignBadges(
     @Param('entityType') entityType: BadgeEntityType,
     @Param('entityId') entityId: string,
     @Body() body: { badgeIds: string[] },
+    @GetUser() user: User,
   ) {
+    await this.ownership.assertCanModerate(entityType, entityId, user);
     return this.badgesService.assignBadges(entityType, entityId, body.badgeIds);
   }
 
@@ -79,11 +87,13 @@ export class BadgesController {
   @Delete('entity/:entityType/:entityId/:badgeId')
   @Auth()
   @ApiOperation({ summary: 'Remove a badge from an entity' })
-  removeBadgeFromEntity(
+  async removeBadgeFromEntity(
     @Param('entityType') entityType: BadgeEntityType,
     @Param('entityId') entityId: string,
     @Param('badgeId') badgeId: string,
+    @GetUser() user: User,
   ) {
+    await this.ownership.assertCanModerate(entityType, entityId, user);
     return this.badgesService.removeBadgeFromEntity(entityType, entityId, badgeId);
   }
 
@@ -102,7 +112,7 @@ export class BadgesController {
   // * UPLOAD BADGE IMAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Post(':id/image')
-  @Auth()
+  @SuperAdmin()
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Upload badge image' })
   uploadImage(@Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
@@ -113,7 +123,7 @@ export class BadgesController {
   // * DELETE BADGE IMAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id/image')
-  @Auth()
+  @SuperAdmin()
   @ApiOperation({ summary: 'Delete badge image' })
   deleteImage(@Param('id') id: string) {
     return this.badgesService.deleteImage(id);
@@ -123,7 +133,7 @@ export class BadgesController {
   // * UPDATE BADGE
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
-  @Auth()
+  @SuperAdmin()
   @ApiOperation({ summary: 'Update badge by ID' })
   update(@Param('id') id: string, @Body() updateBadgeDto: UpdateBadgeDto) {
     return this.badgesService.update(id, updateBadgeDto);
@@ -133,7 +143,7 @@ export class BadgesController {
   // * DELETE BADGE
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
-  @Auth()
+  @SuperAdmin()
   @ApiOperation({ summary: 'Delete badge by ID' })
   remove(@Param('id') id: string) {
     return this.badgesService.remove(id);

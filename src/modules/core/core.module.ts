@@ -21,9 +21,11 @@ import {
 } from './controllers';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { TranslationsModule } from '../translations/translations.module';
+import { CommonModule } from '../common/common.module';
 
 @Module({
   imports: [
+    CommonModule,
     TypeOrmModule.forFeature([
       Model,
       Facility,

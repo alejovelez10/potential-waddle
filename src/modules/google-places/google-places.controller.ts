@@ -11,6 +11,7 @@ import { Auth } from 'src/modules/auth/decorators/auth.decorator';
 import { GetUser } from 'src/modules/common/decorators/get-user.decorator';
 import { User } from 'src/modules/users/entities';
 import { GoogleSyncManualService } from './services/google-sync-manual.service';
+import { EntityAccess } from '../common/decorators/entity-access.decorator';
 
 @Controller('google-places')
 @ApiTags(SwaggerTags.GooglePlaces)
@@ -24,7 +25,7 @@ export class GooglePlacesController {
   // * MANUAL SYNC — owner-triggered (202 async fire-and-forget)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('sync/:type/:id')
-  @Auth()
+  @EntityAccess('manage', 'param:type', { param: 'id' })
   @HttpCode(HttpStatus.ACCEPTED)
   triggerSync(@Param('type') type: string, @Param('id') id: string, @GetUser() currentUser: User) {
     return this.googleSyncManualService.triggerSync(id, type as any, currentUser);
@@ -46,6 +47,7 @@ export class GooglePlacesController {
   }
 
   @Patch('remove-google-place-id')
+  @EntityAccess('manage', 'body:model', { bodyId: 'placeId' })
   @ApiOkResponse({
     description: 'Google Place ID removed correctly',
   })
@@ -54,6 +56,7 @@ export class GooglePlacesController {
   }
 
   @Get('get-all-reviews/:entityId/:entityType')
+  @EntityAccess('manage', 'param:entityType', { param: 'entityId' })
   @ApiOkResponse({
     description: 'All reviews retrieved successfully',
   })
@@ -75,6 +78,7 @@ export class GooglePlacesController {
   }
 
   @Delete('delete-all-reviews/:entityId/:entityType')
+  @EntityAccess('manage', 'param:entityType', { param: 'entityId' })
   @ApiOkResponse({
     description: 'All reviews deleted successfully',
   })
@@ -83,6 +87,7 @@ export class GooglePlacesController {
   }
 
   @Post('review-summary')
+  @EntityAccess('manage', 'body:entityType', { bodyId: 'entityId' })
   @ApiOkResponse({
     description: 'Review summary retrieved successfully',
   })

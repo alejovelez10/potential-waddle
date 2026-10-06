@@ -14,9 +14,15 @@ import {
 } from './controllers';
 import { User } from '../users/entities';
 import { UsersModule } from '../users/users.module';
+import { CommonModule } from '../common/common.module';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([Plan, PlanFeature, Subscription, Payment, User]), UsersModule],
+  imports: [
+    ConfigModule,
+    TypeOrmModule.forFeature([Plan, PlanFeature, Subscription, Payment, User]),
+    UsersModule,
+    CommonModule,
+  ],
   controllers: [
     PlansController,
     AdminPlansController,

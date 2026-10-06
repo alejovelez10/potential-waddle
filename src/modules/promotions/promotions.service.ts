@@ -1,11 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
-import { Promotion } from './entities/promotion.entity';
+import { Promotion, PromotionEntityType } from './entities/promotion.entity';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CloudinaryPresets } from 'src/config';
+import { SubscriptionsService } from '../subscriptions/services';
 
 @Injectable()
 export class PromotionsService {
@@ -13,12 +14,20 @@ export class PromotionsService {
     @InjectRepository(Promotion)
     private readonly promotionRepository: Repository<Promotion>,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   async create(createPromotionDto: CreatePromotionDto, file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Image is required');
     }
+
+    // Promotions are a Premium benefit (freemium)
+    await this.subscriptionsService.assertPremium(
+      createPromotionDto.entityType,
+      createPromotionDto.entityId,
+      'promotions',
+    );
 
     const cloudinaryResponse = await this.cloudinaryService.uploadImage({
       file,
@@ -47,7 +56,7 @@ export class PromotionsService {
     return this.promotionRepository.save(promotion);
   }
 
-  async findAll(entityId?: string, entityType?: 'lodging' | 'restaurant' | 'experience' | 'guide') {
+  async findAll(entityId?: string, entityType?: PromotionEntityType) {
     const whereCondition: any = {};
 
     if (entityId) {
@@ -58,10 +67,22 @@ export class PromotionsService {
       whereCondition.entityType = entityType;
     }
 
-    const promotions = await this.promotionRepository.find({
+    let promotions = await this.promotionRepository.find({
       where: Object.keys(whereCondition).length > 0 ? whereCondition : undefined,
       order: { createdAt: 'DESC' },
     });
+
+    // Public browsing (no entityId): only promotions of Premium businesses are shown. When the
+    // Premium lapses the promotion disappears publicly, but the owner still sees it by entityId.
+    if (!entityId) {
+      const types = [...new Set(promotions.map(p => p.entityType))];
+      const premiumByType = new Map(
+        await Promise.all(
+          types.map(async type => [type, await this.subscriptionsService.getPremiumIdSet(type)] as const),
+        ),
+      );
+      promotions = promotions.filter(p => premiumByType.get(p.entityType)?.has(p.entityId));
+    }
 
     // Enriquecer promociones con información de la entidad
     const enrichedPromotions = await Promise.all(
@@ -78,10 +99,7 @@ export class PromotionsService {
     return enrichedPromotions;
   }
 
-  async hasActivePromotions(
-    entityId: string,
-    entityType: 'lodging' | 'restaurant' | 'experience' | 'guide',
-  ): Promise<boolean> {
+  async hasActivePromotions(entityId: string, entityType: PromotionEntityType): Promise<boolean> {
     const now = new Date();
 
     const count = await this.promotionRepository.count({
@@ -96,7 +114,7 @@ export class PromotionsService {
     return count > 0;
   }
 
-  async getLatestActivePromotion(entityId: string, entityType: 'lodging' | 'restaurant' | 'experience' | 'guide') {
+  async getLatestActivePromotion(entityId: string, entityType: PromotionEntityType) {
     const now = new Date();
 
     const promotion = await this.promotionRepository.findOne({
@@ -112,7 +130,7 @@ export class PromotionsService {
     return promotion;
   }
 
-  async getActivePromotions(entityId: string, entityType: 'lodging' | 'restaurant' | 'experience' | 'guide') {
+  async getActivePromotions(entityId: string, entityType: PromotionEntityType) {
     const now = new Date();
 
     const promotions = await this.promotionRepository.find({
@@ -147,6 +165,13 @@ export class PromotionsService {
           query = `
             SELECT name, whatsapp_numbers[1] as whatsapp 
             FROM restaurant 
+            WHERE id = $1
+          `;
+          break;
+        case 'commerce':
+          query = `
+            SELECT name, whatsapp_numbers[1] as whatsapp
+            FROM commerce
             WHERE id = $1
           `;
           break;
@@ -188,6 +213,9 @@ export class PromotionsService {
           break;
         case 'restaurant':
           query = 'SELECT slug FROM restaurant WHERE id = $1';
+          break;
+        case 'commerce':
+          query = 'SELECT slug FROM commerce WHERE id = $1';
           break;
         case 'experience':
           query = 'SELECT slug FROM experience WHERE id = $1';

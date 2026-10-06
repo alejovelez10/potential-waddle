@@ -8,7 +8,8 @@ import { DeviceParserService } from './enrichment/device-parser.service';
 import { GeoipRefreshCron } from './geoip-refresh.cron';
 import { EventsCanaryCron } from './events-canary.cron';
 import { EntityAnalyticsService } from './entity-analytics.service';
-import { EntityOwnershipResolver } from './entity-ownership.resolver';
+import { CommonModule } from '../common/common.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { PlatformAnalyticsService } from './platform-analytics.service';
 import { Event } from './entities';
 import { User } from '../users/entities';
@@ -16,7 +17,7 @@ import { User } from '../users/entities';
 @Module({
   // EntityAnalyticsService + EntityOwnershipResolver use the injected DataSource (raw SQL),
   // so no extra TypeOrmModule.forFeature entities are required for the read endpoint.
-  imports: [TypeOrmModule.forFeature([Event, User])],
+  imports: [TypeOrmModule.forFeature([Event, User]), CommonModule, SubscriptionsModule],
   controllers: [EventsController],
   providers: [
     EventsService,
@@ -26,7 +27,6 @@ import { User } from '../users/entities';
     GeoipRefreshCron,
     EventsCanaryCron,
     EntityAnalyticsService,
-    EntityOwnershipResolver,
     PlatformAnalyticsService,
   ],
   exports: [EventsService],

@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpStatus, Param, Patch, Post } from '@nestjs/c
 import { ApiOperation, ApiResponse, ApiTags, ApiParam, ApiBody, ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { AppConfigService } from '../services';
+import { SuperAdmin } from '../../auth/decorators';
 
 // DTOs
 class SetConfigValueDto {
@@ -61,6 +62,7 @@ export class AppConfigController {
   // * SET/UPDATE CONFIGURATION VALUE
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @SuperAdmin()
   @ApiOperation({ summary: 'Set or update configuration value' })
   @ApiBody({ type: SetConfigValueDto })
   @ApiResponse({
@@ -75,6 +77,7 @@ export class AppConfigController {
   // * UPDATE CONFIGURATION VALUE BY KEY
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':key')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Update configuration value by key' })
   @ApiParam({ name: 'key', description: 'Configuration key' })
   @ApiBody({ schema: { properties: { value: { type: 'string' } } } })
@@ -109,6 +112,7 @@ export class AppConfigController {
   // * SET RAFA MODE
   // * -------------------------------------------------------------------------------------------------------------
   @Patch('rafa/mode')
+  @SuperAdmin()
   @ApiOperation({ summary: 'Update Rafa mode configuration' })
   @ApiBody({ type: UpdateRafaModeDto })
   @ApiResponse({

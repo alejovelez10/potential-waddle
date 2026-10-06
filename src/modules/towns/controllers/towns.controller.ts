@@ -26,6 +26,7 @@ import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 import { GetUser } from 'src/modules/common/decorators/get-user.decorator';
 import { User } from 'src/modules/users/entities/user.entity';
 import { UsersService } from 'src/modules/users/services/users.service';
+import { SuperAdmin } from '../../auth/decorators';
 
 @Controller('towns')
 @ApiTags(SwaggerTags.Town)
@@ -38,7 +39,7 @@ export class TownsController {
 
   private async getUserTownIds(user: User): Promise<string[]> {
     const fullUser = await this.usersService.getFullUser(user.email);
-    return fullUser?.towns?.map((t) => t.id) ?? [];
+    return fullUser?.towns?.map(t => t.id) ?? [];
   }
 
   private async assertCanManageTown(user: User, townId: string): Promise<void> {
@@ -197,6 +198,7 @@ export class TownsController {
   }
 
   @Post()
+  @SuperAdmin()
   create(@Body() createTownDto: CreateTownDto) {
     return this.townsService.create(createTownDto);
   }
@@ -218,11 +220,13 @@ export class TownsController {
   }
 
   @Patch(':id')
+  @SuperAdmin()
   update(@Param('id') id: string, @Body() updateTownDto: UpdateTownDto) {
     return this.townsService.update(id, updateTownDto);
   }
 
   @Delete(':id')
+  @SuperAdmin()
   remove(@Param('id') id: string) {
     return this.townsService.remove(id);
   }

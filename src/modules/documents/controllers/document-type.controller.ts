@@ -15,7 +15,7 @@ import { ApiTags, ApiOperation, ApiOkResponse, ApiBearerAuth, ApiConsumes, ApiBo
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentTypeService } from '../services';
 import { CreateDocumentTypeDto, UpdateDocumentTypeDto, DocumentTypeResponseDto } from '../dto';
-import { Auth } from '../../auth/decorators';
+import { Auth, SuperAdmin } from '../../auth/decorators';
 
 @ApiTags('Document Types')
 @Controller('document-types')
@@ -23,7 +23,7 @@ export class DocumentTypeController {
   constructor(private readonly documentTypeService: DocumentTypeService) {}
 
   @Post()
-  @Auth()
+  @SuperAdmin()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new document type (Super Admin only)' })
   @ApiOkResponse({ type: DocumentTypeResponseDto })
@@ -50,7 +50,7 @@ export class DocumentTypeController {
   }
 
   @Patch(':id')
-  @Auth()
+  @SuperAdmin()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a document type' })
   @ApiOkResponse({ type: DocumentTypeResponseDto })
@@ -59,7 +59,7 @@ export class DocumentTypeController {
   }
 
   @Patch(':id/toggle-active')
-  @Auth()
+  @SuperAdmin()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Toggle document type active status' })
   @ApiOkResponse({ type: DocumentTypeResponseDto })
@@ -68,7 +68,7 @@ export class DocumentTypeController {
   }
 
   @Delete(':id')
-  @Auth()
+  @SuperAdmin()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a document type' })
   remove(@Param('id', ParseUUIDPipe) id: string) {
@@ -76,7 +76,7 @@ export class DocumentTypeController {
   }
 
   @Post(':id/template')
-  @Auth()
+  @SuperAdmin()
   @ApiBearerAuth()
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
@@ -96,7 +96,7 @@ export class DocumentTypeController {
   }
 
   @Delete(':id/template')
-  @Auth()
+  @SuperAdmin()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete template document from a document type' })
   @ApiOkResponse({ type: DocumentTypeResponseDto })

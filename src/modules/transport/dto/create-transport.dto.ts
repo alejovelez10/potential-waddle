@@ -1,6 +1,18 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { parseArrayValue } from 'src/utils';
 
 export class CreateTransportDto {
@@ -106,6 +118,36 @@ export class CreateTransportDto {
   @IsString()
   @IsOptional()
   licensePlate?: string;
+
+  // * ---------------------------------------------------------------------------------------------------------------
+  // * PREMIUM — información ampliada (only editable while the transport is Premium)
+  // * ---------------------------------------------------------------------------------------------------------------
+
+  @ApiProperty({ example: 'Motocarro Bajaj RE 2022', required: false })
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  vehicleModel?: string;
+
+  @ApiProperty({ example: 4, description: 'Passenger capacity', required: false })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  @IsOptional()
+  capacity?: number;
+
+  @ApiProperty({ example: 'Traslados al embalse, mudanzas pequeñas, tours por veredas', required: false })
+  @IsString()
+  @IsOptional()
+  @MaxLength(2000)
+  services?: string;
+
+  @ApiProperty({ example: ['123e4567-e89b-12d3-a456-426614174000'], description: 'Coverage towns', required: false })
+  @IsArray()
+  @IsUUID('4', { each: true })
+  @IsOptional()
+  coverageTownIds?: string[];
 
   @ApiProperty({
     example: ['cash', 'card'],
