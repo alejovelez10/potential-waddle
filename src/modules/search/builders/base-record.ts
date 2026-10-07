@@ -87,6 +87,18 @@ export function descriptionText(es: string | null | undefined, en: string | null
   return localized(es, en, DESCRIPTION_MAX);
 }
 
+/**
+ * Colombia's bounding box (San Andrés included). Coordinates outside it are data-entry typos —
+ * a missing decimal point (627060, -7503177), placeholders (10, 20) or 0,0 — and would put the
+ * pin on another continent and break "near me", so the record goes without `_geoloc`.
+ */
+const COLOMBIA_BOUNDS = { minLat: -4.5, maxLat: 13.6, minLng: -82, maxLng: -66.5 };
+
+export function isInColombia(lat: number, lng: number): boolean {
+  const b = COLOMBIA_BOUNDS;
+  return lat >= b.minLat && lat <= b.maxLat && lng >= b.minLng && lng <= b.maxLng;
+}
+
 export function buildBaseRecord(input: BaseRecordInput): SearchRecord {
   const { type, row, ctx } = input;
   const isPremium = input.premiumEligible !== false && ctx.premiumIds.has(row.id);
@@ -105,7 +117,7 @@ export function buildBaseRecord(input: BaseRecordInput): SearchRecord {
   const townSlugs = cleanList(input.townSlugs ?? (town?.slug ? [town.slug] : []));
   const lat = toNumber(input.geo?.lat);
   const lng = toNumber(input.geo?.lng);
-  const hasGeo = lat !== undefined && lng !== undefined && !(lat === 0 && lng === 0);
+  const hasGeo = lat !== undefined && lng !== undefined && isInColombia(lat, lng);
   const urbanCenterDistance = toNumber(input.urbanCenterDistance);
   const images = (row.images ?? []).filter(Boolean).slice(0, MAX_IMAGES);
   const paymentMethods = cleanList(input.paymentMethods);

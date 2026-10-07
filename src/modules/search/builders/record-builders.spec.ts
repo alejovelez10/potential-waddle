@@ -1,5 +1,5 @@
 import { MAX_RECORD_BYTES } from '../search.constants';
-import { buildBaseRecord, byteSize, finalizeRecord, localized } from './base-record';
+import { buildBaseRecord, byteSize, finalizeRecord, isInColombia, localized } from './base-record';
 import type { BuildContext } from './build-context';
 import { experienceRecordBuilder } from './experience.record-builder';
 import { lodgingRecordBuilder } from './lodging.record-builder';
@@ -122,6 +122,16 @@ describe('finalizeRecord', () => {
     const before = JSON.stringify(record.description) + JSON.stringify(record.images);
     finalizeRecord(record);
     expect(JSON.stringify(record.description) + JSON.stringify(record.images)).toBe(before);
+  });
+});
+
+describe('isInColombia', () => {
+  it('accepts real coordinates and rejects typos and placeholders', () => {
+    expect(isInColombia(6.2936, -75.0275)).toBe(true); // San Rafael
+    expect(isInColombia(12.58, -81.7)).toBe(true); // San Andrés
+    expect(isInColombia(627060, -7503177)).toBe(false); // missing decimal point
+    expect(isInColombia(10, 20)).toBe(false);
+    expect(isInColombia(0, 0)).toBe(false);
   });
 });
 
