@@ -45,6 +45,14 @@ export class SearchController {
     return this.startReindex();
   }
 
+  @Post('cron/configure')
+  @UseGuards(ReindexSecretGuard)
+  @ApiHeader({ name: REINDEX_SECRET_HEADER, required: true })
+  @ApiOperation({ summary: 'Apply index settings, replicas and synonyms (shared secret, after a deploy)' })
+  cronConfigure() {
+    return this.indexer.configure();
+  }
+
   /** Throws 503 synchronously in safe mode; otherwise answers 202 and keeps working. */
   private startReindex() {
     const job = this.indexer.reindexAll();
