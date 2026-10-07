@@ -17,7 +17,7 @@ const MULTI_WAY: string[][] = [
   ['comercio', 'tienda', 'store', 'shop'],
   ['experiencia', 'experience', 'actividad', 'activity', 'tour', 'plan'],
   ['río', 'river'],
-  ['charco', 'natural pool', 'pozo'],
+  ['charco', 'natural pool', 'swimming hole', 'pozo'],
   ['mirador', 'viewpoint'],
   ['finca', 'casa campestre', 'casa de campo', 'farm stay'],
   ['desayuno', 'breakfast'],

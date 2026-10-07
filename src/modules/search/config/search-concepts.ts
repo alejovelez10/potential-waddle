@@ -289,7 +289,8 @@ export const SEARCH_CONCEPTS: SearchConcept[] = [
   // --- Nature & activities ---
   {
     key: 'river',
-    tags: { es: ['rio', 'charco'], en: ['river', 'natural pool'] },
+    // Not "natural pool": its word "pool" would make every river spot match "piscina"/"pool".
+    tags: { es: ['rio', 'charco'], en: ['river', 'swimming hole'] },
     triggers: ['rio', 'rios', 'charco', 'charcos', 'quebrada', 'acceso al rio', 'river', 'balneario', 'playa del rio'],
   },
   {

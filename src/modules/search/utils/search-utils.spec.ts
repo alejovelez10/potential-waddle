@@ -89,6 +89,12 @@ describe('extractConcepts', () => {
     expect(extractConcepts('Baño privado con agua caliente')).not.toContain('para nadar');
     expect(extractConcepts('Paneles solares')).not.toContain('panaderia');
   });
+
+  it('never tags river spots with the word "pool" (the piscina ↔ pool synonym would match them)', () => {
+    const concepts = extractConcepts('Charco cristalino en el río, balneario natural');
+    expect(concepts).toEqual(expect.arrayContaining(['rio', 'charco', 'river']));
+    expect(concepts.some(tag => /\bpool\b|piscina/.test(tag))).toBe(false);
+  });
 });
 
 describe('text utils', () => {
