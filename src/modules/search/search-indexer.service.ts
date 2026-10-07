@@ -7,10 +7,13 @@ import { DataSource } from 'typeorm';
 import { EnvironmentVariables } from 'src/config';
 import { buildCatalogSettings, buildReplicaSettings } from './config/index-settings';
 import { buildSynonyms } from './config/search-synonyms';
+import { byteSize } from './builders/base-record';
 import { SearchRecordBuilderService } from './builders/search-record-builder.service';
+import type { SearchRecord } from './interfaces/search-record.interface';
 import type { AlgoliaClient } from './providers/algolia.provider';
 import {
   ALGOLIA_CLIENT,
+  ALGOLIA_RECORD_LIMIT_BYTES,
   catalogIndexName,
   objectIdFor,
   replicaIndexName,
@@ -56,6 +59,10 @@ const BADGE_TYPES: SearchType[] = ['lodging', 'restaurant', 'commerce', 'guide',
 export interface ReindexSummary {
   indexed: Record<string, number>;
   deleted: number;
+  /** objectIDs still over the plan limit after trimming: not sent, any previous version kept. */
+  skipped: string[];
+  /** Types whose build or upload failed; their existing records are left untouched. */
+  failed: Record<string, string>;
   durationMs: number;
 }
 
@@ -159,13 +166,22 @@ export class SearchIndexerService implements OnModuleInit {
     const started = Date.now();
     const indexed: Record<string, number> = {};
     const keep = new Set<string>();
+    const skipped: string[] = [];
+    const failed: Record<string, string> = {};
 
+    // One type failing (bad row, Algolia error) must not stop the others.
     for (const type of SEARCH_TYPES) {
-      const { records } = await this.builder.build(type);
-      if (records.length)
-        await client.saveObjects({ indexName: this.indexName, objects: records as any[], batchSize: 500 });
-      records.forEach(r => keep.add(r.objectID));
-      indexed[type] = records.length;
+      try {
+        const { records } = await this.builder.build(type);
+        const { fit, oversized } = this.splitBySize(records);
+        if (fit.length) await client.saveObjects({ indexName: this.indexName, objects: fit as any[], batchSize: 500 });
+        records.forEach(r => keep.add(r.objectID));
+        skipped.push(...oversized);
+        indexed[type] = fit.length;
+      } catch (error) {
+        failed[type] = (error as Error).message;
+        this.logger.error(`Reindex of ${type} failed: ${failed[type]}`);
+      }
     }
 
     const existing: string[] = [];
@@ -174,10 +190,11 @@ export class SearchIndexerService implements OnModuleInit {
       browseParams: { attributesToRetrieve: ['objectID'], hitsPerPage: 1000 },
       aggregator: response => existing.push(...response.hits.map(hit => hit.objectID)),
     });
-    const stale = existing.filter(id => !keep.has(id));
+    const failedPrefixes = Object.keys(failed).map(type => objectIdFor(type as SearchType, ''));
+    const stale = existing.filter(id => !keep.has(id) && !failedPrefixes.some(prefix => id.startsWith(prefix)));
     if (stale.length) await client.deleteObjects({ indexName: this.indexName, objectIDs: stale });
 
-    const summary = { indexed, deleted: stale.length, durationMs: Date.now() - started };
+    const summary: ReindexSummary = { indexed, deleted: stale.length, skipped, failed, durationMs: Date.now() - started };
     this.logger.log(`Reindexed ${this.indexName}: ${JSON.stringify(summary)}`);
     return summary;
   }
@@ -186,17 +203,34 @@ export class SearchIndexerService implements OnModuleInit {
   // Partial reindex (live sync)
   // ------------------------------------------------------------------------------------------
 
+  /** Never send a record the plan would reject: a single oversized record fails its whole batch. */
+  private splitBySize(records: SearchRecord[]): { fit: SearchRecord[]; oversized: string[] } {
+    const fit: SearchRecord[] = [];
+    const oversized: string[] = [];
+    for (const record of records) {
+      const size = byteSize(record);
+      if (size <= ALGOLIA_RECORD_LIMIT_BYTES) {
+        fit.push(record);
+        continue;
+      }
+      oversized.push(record.objectID);
+      this.logger.warn(`Skipping ${record.objectID}: ${size} bytes after trimming (limit ${ALGOLIA_RECORD_LIMIT_BYTES})`);
+    }
+    return { fit, oversized };
+  }
+
   /** Rebuild the given entities: visible ones are upserted, the rest deleted. */
   async reindexEntities(type: SearchType, ids: string[]): Promise<{ upserted: number; deleted: number }> {
     const client = this.requireClient();
     if (!ids.length) return { upserted: 0, deleted: 0 };
 
     const { records, hiddenIds } = await this.builder.build(type, ids);
-    if (records.length) await client.saveObjects({ indexName: this.indexName, objects: records as any[] });
+    const { fit } = this.splitBySize(records);
+    if (fit.length) await client.saveObjects({ indexName: this.indexName, objects: fit as any[] });
     if (hiddenIds.length) {
       await client.deleteObjects({ indexName: this.indexName, objectIDs: hiddenIds.map(id => objectIdFor(type, id)) });
     }
-    return { upserted: records.length, deleted: hiddenIds.length };
+    return { upserted: fit.length, deleted: hiddenIds.length };
   }
 
   /** Handler of SearchSyncQueue: expand fan-outs, resolve slugs, reindex per type. */

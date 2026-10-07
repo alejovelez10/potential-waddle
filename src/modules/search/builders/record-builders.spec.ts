@@ -1,5 +1,5 @@
 import { MAX_RECORD_BYTES } from '../search.constants';
-import { buildBaseRecord, byteSize, finalizeRecord } from './base-record';
+import { buildBaseRecord, byteSize, finalizeRecord, localized } from './base-record';
 import type { BuildContext } from './build-context';
 import { experienceRecordBuilder } from './experience.record-builder';
 import { lodgingRecordBuilder } from './lodging.record-builder';
@@ -87,6 +87,49 @@ describe('finalizeRecord', () => {
     };
     finalizeRecord(record);
     expect(byteSize(record)).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+  });
+
+  it('fits a heavy lodging (long texts, many amenities, 5 photos) under the plan limit, keeping facets', () => {
+    const record = buildBaseRecord(baseInput(ctx()));
+    const long = (word: string) => `${word} `.repeat(400);
+    record.description = { es: long('descripción'), en: long('description') };
+    record.details = { es: long('detalle'), en: long('detail') };
+    record.images = Array.from({ length: 5 }, (_, i) => `https://res.cloudinary.com/x/image/upload/v1/lodging_gallery/foto-${i}-${'a'.repeat(120)}.jpg`);
+    record.amenitiesText = Array.from({ length: 120 }, (_, i) => `Comodidad número ${i} con nombre largo`);
+    record.roomTypes = Array.from({ length: 30 }, (_, i) => `Habitación tipo ${i}`);
+    record.facilities = {
+      slugs: Array.from({ length: 50 }, (_, i) => `facility-${i}`),
+      es: Array.from({ length: 50 }, (_, i) => `Facility ${i}`),
+      en: Array.from({ length: 50 }, (_, i) => `Facility ${i}`),
+      items: Array.from({ length: 50 }, (_, i) => ({
+        id: `${i}`.padStart(36, '0'),
+        slug: `facility-${i}`,
+        name: { es: `Facility ${i}`, en: `Facility ${i}` },
+        icon: 'icon-code',
+      })),
+    };
+
+    finalizeRecord(record);
+
+    expect(byteSize(record)).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+    expect(record.facilities.slugs).toHaveLength(50);
+    expect(record.images.length).toBeGreaterThanOrEqual(3);
+    expect(record.description.es.length).toBeGreaterThan(0);
+  });
+
+  it('leaves small records untouched', () => {
+    const record = buildBaseRecord(baseInput(ctx()));
+    const before = JSON.stringify(record.description) + JSON.stringify(record.images);
+    finalizeRecord(record);
+    expect(JSON.stringify(record.description) + JSON.stringify(record.images)).toBe(before);
+  });
+});
+
+describe('localized', () => {
+  it('keeps EN empty without a translation (the frontend falls back to ES)', () => {
+    expect(localized('Cabaña con piscina', null, 100)).toEqual({ es: 'Cabaña con piscina', en: '' });
+    expect(localized('Cabaña', 'Cabaña', 100)).toEqual({ es: 'Cabaña', en: '' });
+    expect(localized('Cabaña', 'Cabin', 100)).toEqual({ es: 'Cabaña', en: 'Cabin' });
   });
 });
 

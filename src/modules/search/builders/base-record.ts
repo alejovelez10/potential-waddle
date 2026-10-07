@@ -62,10 +62,15 @@ export interface BaseRecordInput {
   image?: string | null;
 }
 
-/** ES text + its EN translation (falls back to ES so EN search still matches the content). */
+/**
+ * ES text + its EN translation. Without a translation `en` stays empty instead of repeating the
+ * ES text: the ES field is already searchable and the frontend falls back to it, so a copy would
+ * only double the record size.
+ */
 export function localized(es: string | null | undefined, en: string | null | undefined, max: number): LocalizedText {
   const base = truncate(es, max);
-  return { es: base, en: en ? truncate(en, max) : base };
+  const translated = en ? truncate(en, max) : '';
+  return { es: base, en: translated === base ? '' : translated };
 }
 
 export function localizedBlock(
@@ -158,8 +163,41 @@ export function buildBaseRecord(input: BaseRecordInput): SearchRecord {
 }
 
 /**
+ * Size-budget steps, least valuable content first. Each runs only while the record is still over
+ * MAX_RECORD_BYTES. `concepts` are extracted before trimming, so trimmed text keeps its signal.
+ */
+const TRIM_STEPS: ((record: SearchRecord) => void)[] = [
+  // The UI renders facility labels from its own dictionary; only categories.items feed the cards.
+  r => (r.facilities = { ...r.facilities, items: [] }),
+  r => (r.details = trimLocalized(r.details, 600)),
+  r => r.menu && (r.menu.dishes = r.menu.dishes.map(dish => dish.split(' — ')[0])),
+  r => (r.description = trimLocalized(r.description, 800)),
+  r => (r.details = trimLocalized(r.details, 250)),
+  r => (r.images = r.images.slice(0, 3)),
+  r => capLists(r, 40),
+  r => (r.description = trimLocalized(r.description, 400)),
+  r => (r.details = { es: '', en: '' }),
+  r => capLists(r, 20),
+  r => (r.description = trimLocalized(r.description, 200)),
+  r => capLists(r, 8),
+];
+
+function trimLocalized(text: LocalizedText, max: number): LocalizedText {
+  return { es: truncate(text.es, max), en: truncate(text.en, max) };
+}
+
+/** Long free-text lists only; facets (categories, facilities, badges) are never cut. */
+function capLists(record: SearchRecord, max: number) {
+  if (record.menu) record.menu = { dishes: record.menu.dishes.slice(0, max), sections: record.menu.sections.slice(0, max) };
+  if (record.amenitiesText) record.amenitiesText = record.amenitiesText.slice(0, max);
+  if (record.roomTypes) record.roomTypes = record.roomTypes.slice(0, max);
+  if (record.products) record.products = record.products.slice(0, max);
+  if (record.services) record.services = record.services.slice(0, max);
+}
+
+/**
  * Last step of every builder: derive `concepts` from all the record's text and enforce the size
- * budget (trim dishes, then details, then description) so no record is rejected by Algolia.
+ * budget (TRIM_STEPS) so no record is rejected by Algolia.
  */
 export function finalizeRecord(record: SearchRecord): SearchRecord {
   const text = [
@@ -184,21 +222,9 @@ export function finalizeRecord(record: SearchRecord): SearchRecord {
     .join(' \n ');
   record.concepts = extractConcepts(text);
 
-  let size = byteSize(record);
-  if (size > MAX_RECORD_BYTES && record.menu) {
-    while (size > MAX_RECORD_BYTES && record.menu.dishes.length > 20) {
-      record.menu.dishes = record.menu.dishes
-        .slice(0, Math.floor(record.menu.dishes.length * 0.75))
-        .map(d => d.split(' — ')[0]);
-      size = byteSize(record);
-    }
-  }
-  if (size > MAX_RECORD_BYTES) {
-    record.details = { es: truncate(record.details.es, 600), en: truncate(record.details.en, 600) };
-    size = byteSize(record);
-  }
-  if (size > MAX_RECORD_BYTES) {
-    record.description = { es: truncate(record.description.es, 500), en: truncate(record.description.en, 500) };
+  for (const step of TRIM_STEPS) {
+    if (byteSize(record) <= MAX_RECORD_BYTES) break;
+    step(record);
   }
   return record;
 }

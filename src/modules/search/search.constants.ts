@@ -37,5 +37,8 @@ export const objectIdFor = (type: SearchType, id: string) => `${type}_${id}`;
 /** `visibleUntil` for records that never expire (2100-01-01, unix seconds). */
 export const FAR_FUTURE_TS = 4102444800;
 
-/** Records above this size are trimmed (Grow allows 100 KB; keep headroom). */
-export const MAX_RECORD_BYTES = 90_000;
+/** Hard per-record limit of the current Algolia plan; bigger records reject the whole batch. */
+export const ALGOLIA_RECORD_LIMIT_BYTES = 10_000;
+
+/** Size budget the builders trim every record to (headroom under the plan limit). */
+export const MAX_RECORD_BYTES = 9_500;
