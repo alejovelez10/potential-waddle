@@ -68,6 +68,11 @@ export interface SearchRecord {
   description: LocalizedText;
   details: LocalizedText;
   concepts: string[];
+  /**
+   * `${type}:c:${categorySlug}` / `${type}:f:${facilitySlug}` — facet for the global search
+   * shortcuts ("Hospedajes con Piscina (12)"): exact per-type counts in the same query.
+   */
+  shortcuts: string[];
 
   price: { from?: number; to?: number; unit?: string; featuredLabel?: string };
   rating: {

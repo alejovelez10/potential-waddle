@@ -117,6 +117,14 @@ describe('finalizeRecord', () => {
     expect(record.description.es.length).toBeGreaterThan(0);
   });
 
+  it('builds per-type shortcut facet values from categories and facilities', () => {
+    const record = buildBaseRecord(baseInput(ctx()));
+    record.categories = { ...record.categories, slugs: ['cabana'] };
+    record.facilities = { ...record.facilities, slugs: ['piscina', 'jacuzzi'] };
+    finalizeRecord(record);
+    expect(record.shortcuts).toEqual(['lodging:c:cabana', 'lodging:f:piscina', 'lodging:f:jacuzzi']);
+  });
+
   it('leaves small records untouched', () => {
     const record = buildBaseRecord(baseInput(ctx()));
     const before = JSON.stringify(record.description) + JSON.stringify(record.images);

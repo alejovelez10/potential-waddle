@@ -41,6 +41,7 @@ export function buildCatalogSettings(prefix: string): IndexSettings {
       'isFeatured',
       'hasMenu',
       'isAvailable',
+      'shortcuts',
     ],
     // Premium (or featured place) first, then the daily rotation. Text relevance always wins.
     customRanking: ['desc(rank.boost)', 'desc(rank.shuffle)'],

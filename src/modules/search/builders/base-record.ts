@@ -141,6 +141,7 @@ export function buildBaseRecord(input: BaseRecordInput): SearchRecord {
     description: input.description,
     details: input.details,
     concepts: [],
+    shortcuts: [],
     price: input.price ?? {},
     rating: {
       display: roundTo(display, 1),
@@ -233,6 +234,10 @@ export function finalizeRecord(record: SearchRecord): SearchRecord {
     .filter(Boolean)
     .join(' \n ');
   record.concepts = extractConcepts(text);
+  record.shortcuts = [
+    ...record.categories.slugs.map(slug => `${record.type}:c:${slug}`),
+    ...record.facilities.slugs.map(slug => `${record.type}:f:${slug}`),
+  ];
 
   for (const step of TRIM_STEPS) {
     if (byteSize(record) <= MAX_RECORD_BYTES) break;
