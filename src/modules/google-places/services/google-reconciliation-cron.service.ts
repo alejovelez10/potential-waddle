@@ -134,33 +134,27 @@ export class GoogleReconciliationCronService {
 
   /**
    * Returns entity IDs eligible for monthly reconciliation:
-   *  1. Publicly-visible: (published+isPublic+subscribed) OR forcedPublic
+   *  1. Premium (active subscription) AND publicly visible: (published+isPublic) OR forcedPublic
    *  2. Valid Places URL: filtered in-memory via isPlacesGeneratedUrl
    *
    * DELIBERATELY omits the stale gate (lastGoogleSyncAt < 24h) — reconciliation
    * processes ALL eligible businesses regardless of last-sync time (D-11).
    *
-   * Empty-subscribedIds guard: uses forcedPublic-only WHERE branch to avoid
-   * invalid IN([]) SQL (T-21-07 mitigate).
+   * Empty-subscribedIds guard: returns [] before building an invalid IN([]) SQL
+   * (T-21-07 mitigate).
    */
   private async getEligibleIds(type: EntityType): Promise<string[]> {
     const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds(type);
 
-    const repo = this.repoFor(type);
+    // Freemium (2026-10): Google reviews are a Premium benefit — only Premium businesses that are
+    // publicly visible (published + isPublic, or forcedPublic) get synced. No Premium → nothing to do.
+    if (subscribedIds.length === 0) return [];
 
-    let qb = repo
+    const qb = this.repoFor(type)
       .createQueryBuilder('e')
-      .select(['e.id', 'e.googleMapsUrl']);
-
-    // Visibility predicate (mirrors lodgings.service.ts — T-21-07 empty-In guard)
-    if (subscribedIds.length > 0) {
-      qb = qb.where(
-        '(e.status = :status AND e.isPublic = true AND e.id IN (:...ids)) OR e.forcedPublic = true',
-        { status: 'published', ids: subscribedIds },
-      );
-    } else {
-      qb = qb.where('e.forcedPublic = true');
-    }
+      .select(['e.id', 'e.googleMapsUrl'])
+      .where('e.id IN (:...ids)', { ids: subscribedIds })
+      .andWhere('((e.status = :status AND e.isPublic = true) OR e.forcedPublic = true)', { status: 'published' });
 
     // NO stale gate — reconciliation is a monthly full-correctness sweep (D-11)
 

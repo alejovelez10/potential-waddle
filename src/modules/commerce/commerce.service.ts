@@ -32,6 +32,7 @@ import { DocumentService } from '../documents/services';
 import { shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
 import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
+import { hideGoogleRatingUnlessPremium } from '../subscriptions/utils/google-rating-visibility';
 import { DocumentEntityType } from '../documents/enums';
 import {
   computeCommerceCompletion,
@@ -76,18 +77,23 @@ export class CommerceService {
     const { where, order } = generateCommerceQueryFiltersAndSort(filters);
 
     // Freemium gating: status='published' + isPublic=true (no subscription required).
-    const commerces = await this.commerceRepository.find({
-      relations: {
-        town: { department: true },
-        categories: { icon: true },
-        images: { imageResource: true },
-        user: true,
-      },
-      where: { ...where, status: 'published', isPublic: true },
-      order,
-    });
+    const [commerces, premiumIds] = await Promise.all([
+      this.commerceRepository.find({
+        relations: {
+          town: { department: true },
+          categories: { icon: true },
+          images: { imageResource: true },
+          user: true,
+        },
+        where: { ...where, status: 'published', isPublic: true },
+        order,
+      }),
+      this.subscriptionsService.getPremiumIdSet('commerce'),
+    ]);
 
-    return commerces.map(commerce => new CommerceIndexDto(commerce));
+    return commerces.map(commerce =>
+      hideGoogleRatingUnlessPremium(new CommerceIndexDto(commerce), premiumIds.has(commerce.id)),
+    );
   }
 
   // ------------------------------------------------------------------------------------------------
@@ -240,7 +246,7 @@ export class CommerceService {
       const dto = new CommerceIndexDto(base as Commerce, userReview?.id);
       dto.isPremium = premiumIds.has(commerce.id);
       dto.isVerified = verifiedIds.has(commerce.id);
-      return dto;
+      return hideGoogleRatingUnlessPremium(dto, premiumIds.has(commerce.id));
     });
   }
 
@@ -530,9 +536,10 @@ export class CommerceService {
     }
 
     const dto = new CommerceFullDto(base as Commerce, userReview?.id);
-    (dto as any).isPremium = await this.subscriptionsService.isPremium('commerce', commerce.id);
+    const isPremium = await this.subscriptionsService.isPremium('commerce', commerce.id);
+    (dto as any).isPremium = isPremium;
     (dto as any).isVerified = await this.verificationService.isVerified('commerce', commerce.id);
-    return dto;
+    return hideGoogleRatingUnlessPremium(dto, isPremium);
   }
 
   // ------------------------------------------------------------------------------------------------

@@ -134,20 +134,20 @@ describe('GoogleSyncCronService', () => {
   // -------------------------------------------------------------------------
   // Eligibility: forcedPublic=true entity is included even if not subscribed
   // -------------------------------------------------------------------------
-  it('(eligibility) includes forcedPublic entity even when not in subscribedIds', async () => {
+  it('(eligibility) skips free businesses — forcedPublic without Premium is NOT synced', async () => {
     await buildModule();
     const forcedPublicLodging = {
       id: 'lodging-forced-01',
       googleMapsUrl: VALID_URL,
       lastGoogleSyncAt: null,
     };
-    // No subscriptions
+    // No subscriptions (free business): Google reviews are a Premium benefit
     subscriptionsService.getActiveSubscribedEntityIds.mockResolvedValue([]);
     lodgingRepo.createQueryBuilder.mockReturnValue(makeQbStub([forcedPublicLodging]));
 
     await service.runWeeklySync();
 
-    expect(googleSyncService.syncEntity).toHaveBeenCalledWith('lodging-forced-01', 'lodging', 'cron');
+    expect(googleSyncService.syncEntity).not.toHaveBeenCalledWith('lodging-forced-01', 'lodging', 'cron');
   });
 
   // -------------------------------------------------------------------------
@@ -186,17 +186,27 @@ describe('GoogleSyncCronService', () => {
   // -------------------------------------------------------------------------
   // Eligibility: when subscribedIds is empty, query uses only forcedPublic branch (no In([]))
   // -------------------------------------------------------------------------
-  it('(eligibility) when subscribedIds is empty, queryBuilder.where is called with forcedPublic-only condition', async () => {
+  it('(eligibility) when subscribedIds is empty, no query is built (Premium only)', async () => {
     await buildModule();
     subscriptionsService.getActiveSubscribedEntityIds.mockResolvedValue([]);
+
+    await service.runWeeklySync();
+
+    expect(lodgingRepo.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('(eligibility) restricts the query to Premium ids that are publicly visible', async () => {
+    await buildModule();
+    subscriptionsService.getActiveSubscribedEntityIds.mockResolvedValue(['lodging-001']);
     const qbStub = makeQbStub([]);
     lodgingRepo.createQueryBuilder.mockReturnValue(qbStub);
 
     await service.runWeeklySync();
 
-    // where must be called with the forcedPublic-only string (no :ids parameter)
-    expect(qbStub.where).toHaveBeenCalledWith(
-      'e.forcedPublic = true',
+    expect(qbStub.where).toHaveBeenCalledWith('e.id IN (:...ids)', { ids: ['lodging-001'] });
+    expect(qbStub.andWhere).toHaveBeenCalledWith(
+      '((e.status = :status AND e.isPublic = true) OR e.forcedPublic = true)',
+      { status: 'published' },
     );
   });
 

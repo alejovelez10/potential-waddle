@@ -35,6 +35,7 @@ import { DocumentService } from '../documents/services';
 import { shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
 import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
+import { hideGoogleRatingUnlessPremium } from '../subscriptions/utils/google-rating-visibility';
 import { DocumentEntityType } from '../documents/enums';
 import {
   computeRestaurantCompletion,
@@ -78,13 +79,18 @@ export class RestaurantsService {
     const { where, order } = generateRestaurantQueryFiltersAndSort(filters);
 
     // Freemium gating: status='published' + isPublic=true (no subscription required).
-    const restaurants = await this.restaurantRepository.find({
-      relations: { town: { department: true }, categories: { icon: true }, images: { imageResource: true } },
-      where: { ...where, status: 'published', isPublic: true },
-      order,
-    });
+    const [restaurants, premiumIds] = await Promise.all([
+      this.restaurantRepository.find({
+        relations: { town: { department: true }, categories: { icon: true }, images: { imageResource: true } },
+        where: { ...where, status: 'published', isPublic: true },
+        order,
+      }),
+      this.subscriptionsService.getPremiumIdSet('restaurant'),
+    ]);
 
-    return restaurants.map(restaurant => new RestaurantIndexDto({ data: restaurant }));
+    return restaurants.map(restaurant =>
+      hideGoogleRatingUnlessPremium(new RestaurantIndexDto({ data: restaurant }), premiumIds.has(restaurant.id)),
+    );
   }
 
   // ------------------------------------------------------------------------------------------------
@@ -250,7 +256,7 @@ export class RestaurantsService {
       (dto as any).latestPromotionValue = latestPromotion?.value;
       dto.isPremium = isPremium;
       dto.isVerified = verifiedIds.has(restaurant.id);
-      return dto;
+      return hideGoogleRatingUnlessPremium(dto, isPremium);
     });
   }
 
@@ -282,7 +288,10 @@ export class RestaurantsService {
     if (shouldRandomize) {
       restaurants = restaurants.sort(() => Math.random() - 0.5);
     }
-    return restaurants.map(restaurant => new RestaurantVectorDto({ data: restaurant }));
+    const premiumIds = await this.subscriptionsService.getPremiumIdSet('restaurant');
+    return restaurants.map(restaurant =>
+      hideGoogleRatingUnlessPremium(new RestaurantVectorDto({ data: restaurant }), premiumIds.has(restaurant.id)),
+    );
   }
 
   // ------------------------------------------------------------------------------------------------
@@ -581,7 +590,7 @@ export class RestaurantsService {
     (dto as any).isPremium = isPremium;
     (dto as any).isVerified = await this.verificationService.isVerified('restaurant', restaurant.id);
 
-    return dto;
+    return hideGoogleRatingUnlessPremium(dto, isPremium);
   }
 
   // ------------------------------------------------------------------------------------------------

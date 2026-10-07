@@ -50,6 +50,7 @@ import { ResendService } from '../email/services/resend.service';
 import { shouldRankPremiumFirst, sortPremiumFirst } from '../subscriptions/utils/premium-ranking';
 import { VerificationService } from '../verification/verification.service';
 import { SubscriptionsService } from '../subscriptions/services';
+import { hideGoogleRatingUnlessPremium } from '../subscriptions/utils/google-rating-visibility';
 import { TranslationResolverService } from '../translations/translation-resolver.service';
 
 @Injectable()
@@ -107,9 +108,14 @@ export class LodgingsService {
       user: true,
     };
 
-    const lodgings = await this.lodgingRespository.find({ relations, order, where });
+    const [lodgings, premiumIds] = await Promise.all([
+      this.lodgingRespository.find({ relations, order, where }),
+      this.subscriptionsService.getPremiumIdSet('lodging'),
+    ]);
 
-    return lodgings.map(lodgings => new LodgingIndexDto(lodgings));
+    return lodgings.map(lodging =>
+      hideGoogleRatingUnlessPremium(new LodgingIndexDto(lodging), premiumIds.has(lodging.id)),
+    );
   }
 
   // ------------------------------------------------------------------------------------------------
@@ -282,7 +288,7 @@ export class LodgingsService {
       dto.latestPromotionValue = latestPromotion?.value;
       dto.isPremium = isPremium;
       dto.isVerified = verifiedIds.has(lodging.id);
-      return dto;
+      return hideGoogleRatingUnlessPremium(dto, isPremium);
     });
   }
 
@@ -316,7 +322,10 @@ export class LodgingsService {
     if (shouldRandomize) {
       lodgings = lodgings.sort(() => Math.random() - 0.5);
     }
-    return lodgings.map(lodging => new LodgingVectorDto(lodging));
+    const premiumIds = await this.subscriptionsService.getPremiumIdSet('lodging');
+    return lodgings.map(lodging =>
+      hideGoogleRatingUnlessPremium(new LodgingVectorDto(lodging), premiumIds.has(lodging.id)),
+    );
   }
   // ------------------------------------------------------------------------------------------------
   // Find one lodging
@@ -509,7 +518,7 @@ export class LodgingsService {
     (dto as any).isPremium = isPremium;
     (dto as any).isVerified = await this.verificationService.isVerified('lodging', lodging.id);
 
-    return dto;
+    return hideGoogleRatingUnlessPremium(dto, isPremium);
   }
 
   // ------------------------------------------------------------------------------------------------

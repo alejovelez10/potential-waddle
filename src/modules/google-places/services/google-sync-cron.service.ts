@@ -118,32 +118,26 @@ export class GoogleSyncCronService {
 
   /**
    * Returns entity IDs eligible for cron sync:
-   *  1. Publicly-visible: (published+isPublic+subscribed) OR forcedPublic
+   *  1. Premium (active subscription) AND publicly visible: (published+isPublic) OR forcedPublic
    *  2. Stale: lastGoogleSyncAt IS NULL OR < 24h ago
    *  3. Valid Places URL: filtered in-memory via isPlacesGeneratedUrl
    *
    * Only `id`, `googleMapsUrl`, `lastGoogleSyncAt` are selected (minimal load — avoids relations).
-   * Empty-subscribedIds guard: uses forcedPublic-only WHERE branch to avoid invalid IN([]) SQL (T-21-07).
+   * Empty-subscribedIds guard: returns [] before building an invalid IN([]) SQL (T-21-07).
    */
   private async getEligibleIds(type: EntityType): Promise<string[]> {
     const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const subscribedIds = await this.subscriptionsService.getActiveSubscribedEntityIds(type);
 
-    const repo = this.repoFor(type);
+    // Freemium (2026-10): Google reviews are a Premium benefit — only Premium businesses that are
+    // publicly visible (published + isPublic, or forcedPublic) get synced. No Premium → nothing to do.
+    if (subscribedIds.length === 0) return [];
 
-    let qb = repo
+    let qb = this.repoFor(type)
       .createQueryBuilder('e')
-      .select(['e.id', 'e.googleMapsUrl', 'e.lastGoogleSyncAt']);
-
-    // Visibility predicate (mirrors lodgings.service.ts ~209-226 — T-21-07 empty-In guard)
-    if (subscribedIds.length > 0) {
-      qb = qb.where(
-        '(e.status = :status AND e.isPublic = true AND e.id IN (:...ids)) OR e.forcedPublic = true',
-        { status: 'published', ids: subscribedIds },
-      );
-    } else {
-      qb = qb.where('e.forcedPublic = true');
-    }
+      .select(['e.id', 'e.googleMapsUrl', 'e.lastGoogleSyncAt'])
+      .where('e.id IN (:...ids)', { ids: subscribedIds })
+      .andWhere('((e.status = :status AND e.isPublic = true) OR e.forcedPublic = true)', { status: 'published' });
 
     // Stale gate — SQL filter (efficient; only bring entities not synced in last 24h)
     qb = qb.andWhere('(e.lastGoogleSyncAt IS NULL OR e.lastGoogleSyncAt < :threshold)', {

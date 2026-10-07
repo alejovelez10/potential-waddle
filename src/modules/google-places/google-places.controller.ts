@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { GooglePlacesService } from './google-places.service';
 import { SwaggerTags } from 'src/config';
@@ -12,6 +24,10 @@ import { GetUser } from 'src/modules/common/decorators/get-user.decorator';
 import { User } from 'src/modules/users/entities';
 import { GoogleSyncManualService } from './services/google-sync-manual.service';
 import { EntityAccess } from '../common/decorators/entity-access.decorator';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
+import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
+import { SubscriptionsService } from '../subscriptions/services/subscriptions.service';
+import type { EntityType } from '../subscriptions/entities/subscription.entity';
 
 @Controller('google-places')
 @ApiTags(SwaggerTags.GooglePlaces)
@@ -19,7 +35,26 @@ export class GooglePlacesController {
   constructor(
     private readonly googlePlacesService: GooglePlacesService,
     private readonly googleSyncManualService: GoogleSyncManualService,
+    private readonly ownership: EntityOwnershipResolver,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
+
+  /**
+   * Freemium (2026-10): Google reviews — sync, list, charts and AI analysis — are a Premium benefit.
+   * Super-admins and town-admins of the entity's town always pass (they manage the territory,
+   * not the subscription). Anyone else gets 403 `PREMIUM_REQUIRED` when the business is free.
+   */
+  private async assertGoogleReviewsAccess(entityType: string, entityId: string, user?: User): Promise<void> {
+    if (user) {
+      try {
+        await this.ownership.assertCanModerate(entityType, entityId, user);
+        return;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
+    await this.subscriptions.assertPremium(entityType as EntityType, entityId, 'google_reviews');
+  }
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * MANUAL SYNC — owner-triggered (202 async fire-and-forget)
@@ -27,7 +62,8 @@ export class GooglePlacesController {
   @Post('sync/:type/:id')
   @EntityAccess('manage', 'param:type', { param: 'id' })
   @HttpCode(HttpStatus.ACCEPTED)
-  triggerSync(@Param('type') type: string, @Param('id') id: string, @GetUser() currentUser: User) {
+  async triggerSync(@Param('type') type: string, @Param('id') id: string, @GetUser() currentUser: User) {
+    await this.assertGoogleReviewsAccess(type, id, currentUser);
     return this.googleSyncManualService.triggerSync(id, type as any, currentUser);
   }
 
@@ -60,7 +96,12 @@ export class GooglePlacesController {
   @ApiOkResponse({
     description: 'All reviews retrieved successfully',
   })
-  getAllReviews(@Param('entityId') entityId: string, @Param('entityType') entityType: string) {
+  async getAllReviews(
+    @Param('entityId') entityId: string,
+    @Param('entityType') entityType: string,
+    @GetUser() user: User,
+  ) {
+    await this.assertGoogleReviewsAccess(entityType, entityId, user);
     return this.googlePlacesService.fetchReviewsFromApify(entityId, entityType);
   }
 
@@ -68,12 +109,15 @@ export class GooglePlacesController {
   // * GET ALL GOOGLE REVIEWS
   // * ----------------------------------------------------------------------------------------------------------------
   @Get('reviews/:entityId/:entityType')
+  @OptionalAuth()
   @GoogleReviewsListQueryDocsGroup()
-  findAll(
+  async findAll(
     @Param('entityId') entityId: string,
     @Param('entityType') entityType: string,
     @GoogleReviewsFilters() filters: GoogleReviewsFiltersDto,
+    @GetUser() user?: User,
   ) {
+    await this.assertGoogleReviewsAccess(entityType, entityId, user);
     return this.googlePlacesService.getAllReviews({ filters, entityId, entityType });
   }
 
@@ -91,7 +135,8 @@ export class GooglePlacesController {
   @ApiOkResponse({
     description: 'Review summary retrieved successfully',
   })
-  reviewSummary(@Body() body: GoogleReviewSummaryRequestDto) {
+  async reviewSummary(@Body() body: GoogleReviewSummaryRequestDto, @GetUser() user: User) {
+    await this.assertGoogleReviewsAccess(body.entityType, body.entityId, user);
     return this.googlePlacesService.reviewSummary(
       body.message,
       body.entityId,
@@ -100,18 +145,30 @@ export class GooglePlacesController {
   }
 
   @Get('last-review-summary/:entityId/:entityType')
+  @OptionalAuth()
   @ApiOkResponse({
     description: 'Last review summary retrieved successfully',
   })
-  getReviewsSummary(@Param('entityId') entityId: string, @Param('entityType') entityType: string) {
+  async getReviewsSummary(
+    @Param('entityId') entityId: string,
+    @Param('entityType') entityType: string,
+    @GetUser() user?: User,
+  ) {
+    await this.assertGoogleReviewsAccess(entityType, entityId, user);
     return this.googlePlacesService.getReviewsSummary(entityId, entityType as 'lodging' | 'restaurant' | 'commerce');
   }
 
   @Get('reviews-for-chart/:entityId/:entityType')
+  @OptionalAuth()
   @ApiOkResponse({
     description: 'Reviews for chart retrieved successfully.',
   })
-  getReviewsforChart(@Param('entityId') entityId: string, @Param('entityType') entityType: string) {
+  async getReviewsforChart(
+    @Param('entityId') entityId: string,
+    @Param('entityType') entityType: string,
+    @GetUser() user?: User,
+  ) {
+    await this.assertGoogleReviewsAccess(entityType, entityId, user);
     return this.googlePlacesService.getReviewsCountByRating(
       entityId,
       entityType as 'lodging' | 'restaurant' | 'commerce',
@@ -119,10 +176,16 @@ export class GooglePlacesController {
   }
 
   @Get('reviews-for-chart-by-year/:entityId/:entityType')
+  @OptionalAuth()
   @ApiOkResponse({
     description: 'Reviews for chart by year retrieved successfully.',
   })
-  getReviewsforChartByYear(@Param('entityId') entityId: string, @Param('entityType') entityType: string) {
+  async getReviewsforChartByYear(
+    @Param('entityId') entityId: string,
+    @Param('entityType') entityType: string,
+    @GetUser() user?: User,
+  ) {
+    await this.assertGoogleReviewsAccess(entityType, entityId, user);
     return this.googlePlacesService.getReviewsCountByYear(
       entityId,
       entityType as 'lodging' | 'restaurant' | 'commerce',
@@ -130,10 +193,16 @@ export class GooglePlacesController {
   }
 
   @Get('reviews-by-month/:entityId/:entityType')
+  @OptionalAuth()
   @ApiOkResponse({
     description: 'Reviews count by month for current year.',
   })
-  getReviewsByMonth(@Param('entityId') entityId: string, @Param('entityType') entityType: string) {
+  async getReviewsByMonth(
+    @Param('entityId') entityId: string,
+    @Param('entityType') entityType: string,
+    @GetUser() user?: User,
+  ) {
+    await this.assertGoogleReviewsAccess(entityType, entityId, user);
     return this.googlePlacesService.getReviewsCountByMonth(
       entityId,
       entityType as 'lodging' | 'restaurant' | 'commerce',
@@ -141,10 +210,16 @@ export class GooglePlacesController {
   }
 
   @Get('reviews-rating-trend/:entityId/:entityType')
+  @OptionalAuth()
   @ApiOkResponse({
     description: 'Rating trend over time (average rating per month).',
   })
-  getReviewsRatingTrend(@Param('entityId') entityId: string, @Param('entityType') entityType: string) {
+  async getReviewsRatingTrend(
+    @Param('entityId') entityId: string,
+    @Param('entityType') entityType: string,
+    @GetUser() user?: User,
+  ) {
+    await this.assertGoogleReviewsAccess(entityType, entityId, user);
     return this.googlePlacesService.getReviewsRatingTrend(
       entityId,
       entityType as 'lodging' | 'restaurant' | 'commerce',
@@ -152,16 +227,24 @@ export class GooglePlacesController {
   }
 
   @Get('reviews-metrics/:entityId/:entityType')
+  @OptionalAuth()
   @ApiOkResponse({
     description: 'Aggregate metrics for reviews (average, total, distribution, etc.).',
   })
-  getReviewsMetrics(@Param('entityId') entityId: string, @Param('entityType') entityType: string) {
+  async getReviewsMetrics(
+    @Param('entityId') entityId: string,
+    @Param('entityType') entityType: string,
+    @GetUser() user?: User,
+  ) {
+    await this.assertGoogleReviewsAccess(entityType, entityId, user);
     return this.googlePlacesService.getReviewsMetrics(entityId, entityType as 'lodging' | 'restaurant' | 'commerce');
   }
 
   @Get('analytics/:type/:id')
+  @OptionalAuth()
   @ApiOkResponse({ description: 'Star distribution + monthly rating trend for the reviews charts' })
-  getAnalytics(@Param('type') type: string, @Param('id') id: string) {
+  async getAnalytics(@Param('type') type: string, @Param('id') id: string, @GetUser() user?: User) {
+    await this.assertGoogleReviewsAccess(type, id, user);
     return this.googlePlacesService.getAnalytics(id, type as 'lodging' | 'restaurant' | 'commerce');
   }
 }
