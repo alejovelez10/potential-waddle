@@ -116,7 +116,14 @@ export class SearchIndexerService implements OnModuleInit {
       indexSettings: buildCatalogSettings(this.prefix),
       forwardToReplicas: false,
     });
-    await client.waitForTask({ indexName: this.indexName, taskID });
+    // Only the first run needs this (replicas must exist before their own settings). Afterwards
+    // Algolia applies an index's tasks in order, and on this plan a settings task over a filled
+    // index can stay queued for minutes — so wait ~40 s at most and carry on.
+    try {
+      await client.waitForTask({ indexName: this.indexName, taskID, maxRetries: 20 });
+    } catch (error) {
+      this.logger.warn(`Settings task ${taskID} still pending, continuing: ${(error as Error).message}`);
+    }
 
     const replicaKeys = Object.keys(SORT_REPLICAS) as SortReplicaKey[];
     for (const key of replicaKeys) {
