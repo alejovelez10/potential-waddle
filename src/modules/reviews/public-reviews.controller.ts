@@ -4,6 +4,7 @@ import { SwaggerTags } from 'src/config';
 import { Controller } from '@nestjs/common';
 import { ReviewsService } from './services';
 import { Auth } from 'src/modules/auth/decorators';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 @Controller('public/reviews')
 @ApiTags(SwaggerTags.PublicReviews)
 export class PublicReviewsController {
@@ -12,6 +13,7 @@ export class PublicReviewsController {
   // * DELETE REVIEW IMAGE
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete('/images/:imageId')
+  @SearchSyncSkip()
   @ApiOperation({ summary: 'Delete a review image' })
   @Auth()
   delete(@Param('imageId', new ParseUUIDPipe()) imageId: string) {

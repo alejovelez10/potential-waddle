@@ -6,7 +6,10 @@ import { PlansService } from '../services';
 import { PlanDto, CreatePlanDto, UpdatePlanDto } from '../dto';
 import { CreatePlanFeatureDto, UpdatePlanFeatureDto } from '../dto/create-plan-feature.dto';
 import { PlanFeature } from '../entities';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: Premium changes are pushed from SubscriptionsService (it knows the entity).
+@SearchSyncSkip()
 @Controller('admin/plans')
 @ApiTags('Admin - Plans')
 @SuperAdmin()

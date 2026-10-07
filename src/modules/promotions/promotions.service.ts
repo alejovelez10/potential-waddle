@@ -7,6 +7,7 @@ import { UpdatePromotionDto } from './dto/update-promotion.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CloudinaryPresets } from 'src/config';
 import { SubscriptionsService } from '../subscriptions/services';
+import { SearchSyncQueue } from '../search/search-sync.queue';
 
 @Injectable()
 export class PromotionsService {
@@ -15,6 +16,7 @@ export class PromotionsService {
     private readonly promotionRepository: Repository<Promotion>,
     private readonly cloudinaryService: CloudinaryService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly searchSync: SearchSyncQueue,
   ) {}
 
   async create(createPromotionDto: CreatePromotionDto, file: Express.Multer.File) {
@@ -53,7 +55,9 @@ export class PromotionsService {
       validTo: new Date(createPromotionDto.validTo),
     });
 
-    return this.promotionRepository.save(promotion);
+    const saved = await this.promotionRepository.save(promotion);
+    this.searchSync.mark(saved.entityType, saved.entityId);
+    return saved;
   }
 
   async findAll(entityId?: string, entityType?: PromotionEntityType) {
@@ -288,7 +292,11 @@ export class PromotionsService {
       ...(updatePromotionDto.validTo && { validTo: new Date(updatePromotionDto.validTo) }),
     };
 
-    return this.promotionRepository.save(updatedPromotion);
+    const saved = await this.promotionRepository.save(updatedPromotion);
+    // The promoted entity may have changed too: refresh both.
+    this.searchSync.mark(promotion.entityType, promotion.entityId);
+    this.searchSync.mark(saved.entityType, saved.entityId);
+    return saved;
   }
 
   async remove(id: number) {
@@ -304,6 +312,8 @@ export class PromotionsService {
       }
     }
 
-    return this.promotionRepository.remove(promotion);
+    const removed = await this.promotionRepository.remove(promotion);
+    this.searchSync.mark(promotion.entityType, promotion.entityId);
+    return removed;
   }
 }

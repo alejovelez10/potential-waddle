@@ -3,7 +3,10 @@ import { ApiTags, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 
 import { PlansService } from '../services';
 import { PlanDto } from '../dto';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: Premium changes are pushed from SubscriptionsService (it knows the entity).
+@SearchSyncSkip()
 @Controller('plans')
 @ApiTags('Subscriptions')
 export class PlansController {

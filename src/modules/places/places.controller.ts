@@ -46,6 +46,7 @@ import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
 import { PlaceVectorDto } from './dto/place-vector.dto';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { RequestLocale } from '../translations/request-locale.decorator';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('places')
 @ApiTags(SwaggerTags.Places)
@@ -60,6 +61,7 @@ export class PlacesController {
   // * CREATE PLACE
   // * ----------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSync('place', { fromResponse: true })
   @Auth()
   @ApiOperation({ summary: 'Create a new place' })
   @ApiConsumes('multipart/form-data')
@@ -198,6 +200,7 @@ export class PlacesController {
   // * PLACE REVIEWS
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':id/reviews')
+  @SearchSync('place', { param: 'id' })
   @Auth()
   @ApiOperation({ summary: 'Create a new review for a place' })
   @ApiConsumes('application/x-www-form-urlencoded')
@@ -236,6 +239,7 @@ export class PlacesController {
   // * UPDATE PLACE REVIEW
   // * ----------------------------------------------------------------------------------------------------------------
   @Patch(':id/reviews/:reviewId')
+  @SearchSync('place', { param: 'id' })
   @Auth()
   @ApiOperation({ summary: 'Update a review of a user for a place' })
   @UseInterceptors(FilesInterceptor('images'))
@@ -253,6 +257,7 @@ export class PlacesController {
   // * DELETE PLACE REVIEW
   // * ----------------------------------------------------------------------------------------------------------------
   @Delete(':id/reviews/:reviewId')
+  @SearchSync('place', { param: 'id' })
   @Auth()
   @ApiOperation({ summary: 'Delete a review of a user for a place' })
   removeReview(@Param('id') id: string, @Param('reviewId') reviewId: string, @GetUser() user: User) {

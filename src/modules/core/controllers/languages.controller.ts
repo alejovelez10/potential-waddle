@@ -5,7 +5,10 @@ import { SuperAdmin } from '../../auth/decorators';
 import { SwaggerTags } from 'src/config';
 import { CreateLanguageDto } from '../dto';
 import { LanguagesService } from '../services';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: these routes never change catalog records.
+@SearchSyncSkip()
 @Controller('languages')
 @ApiTags(SwaggerTags.Languages)
 export class LanguagesController {

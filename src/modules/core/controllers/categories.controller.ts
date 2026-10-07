@@ -31,6 +31,7 @@ import { Auth } from '../../auth/decorators';
 import { RequestLocale } from '../../translations/request-locale.decorator';
 import { TranslationResolverService } from '../../translations/translation-resolver.service';
 import { SuperAdmin } from '../../auth/decorators';
+import { SearchSync, SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('categories')
 @ApiTags(SwaggerTags.Categories)
@@ -43,6 +44,7 @@ export class CategoriesController {
   // * CREATE NEW CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSyncSkip()
   @SuperAdmin()
   create(@Body() createCategoryDto: CreateCategoryDto) {
     return this.categoriesService.create(createCategoryDto);
@@ -137,6 +139,7 @@ export class CategoriesController {
   // * UPDATE CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @SearchSync('category', { param: 'id' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Update a category' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })
@@ -154,6 +157,7 @@ export class CategoriesController {
   // * DELETE CATEGORY
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @SearchSync('category', { param: 'id' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Delete a category' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })
@@ -180,6 +184,7 @@ export class CategoriesController {
   // * UPLOAD CATEGORY IMAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Post(':id/upload-image')
+  @SearchSync('category', { param: 'id' })
   @SuperAdmin()
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Upload an image for a category' })
@@ -211,6 +216,7 @@ export class CategoriesController {
   // * DELETE CATEGORY IMAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id/image')
+  @SearchSync('category', { param: 'id' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Delete category image' })
   @ApiParam({ name: 'id', description: 'Category UUID', type: 'string' })

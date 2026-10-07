@@ -3,6 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags, ApiParam, ApiBody, ApiProperty } fr
 import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { AppConfigService } from '../services';
 import { SuperAdmin } from '../../auth/decorators';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
 // DTOs
 class SetConfigValueDto {
@@ -26,6 +27,8 @@ class UpdateRafaModeDto {
   mode: 'basic' | 'superIA';
 }
 
+// Search sync: these routes never change catalog records.
+@SearchSyncSkip()
 @Controller('app-config')
 @ApiTags('App Configuration')
 export class AppConfigController {

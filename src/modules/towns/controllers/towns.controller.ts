@@ -27,7 +27,10 @@ import { GetUser } from 'src/modules/common/decorators/get-user.decorator';
 import { User } from 'src/modules/users/entities/user.entity';
 import { UsersService } from 'src/modules/users/services/users.service';
 import { SuperAdmin } from '../../auth/decorators';
+import { SearchSync, SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: only the update routes change catalog data (town name/slug); see method-level @SearchSync.
+@SearchSyncSkip()
 @Controller('towns')
 @ApiTags(SwaggerTags.Town)
 export class TownsController {
@@ -76,6 +79,7 @@ export class TownsController {
   }
 
   @Patch('admin/:id')
+  @SearchSync('town', { param: 'id' })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update town (Admin only)' })
@@ -220,6 +224,7 @@ export class TownsController {
   }
 
   @Patch(':id')
+  @SearchSync('town', { param: 'id' })
   @SuperAdmin()
   update(@Param('id') id: string, @Body() updateTownDto: UpdateTownDto) {
     return this.townsService.update(id, updateTownDto);

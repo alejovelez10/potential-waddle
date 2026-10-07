@@ -30,7 +30,8 @@
     "migration:create": "ts-node ./src/scripts/create-migration.ts",
     "migration:revert": "npm run typeorm -- -d ./src/config/connection-source.ts migration:revert",
     "backfill:whatsapp": "ts-node -r tsconfig-paths/register ./src/scripts/backfill-whatsapp-clicks.ts",
-    "backfill:translations": "ts-node -r tsconfig-paths/register ./src/scripts/backfill-translations.ts"
+    "backfill:translations": "ts-node -r tsconfig-paths/register ./src/scripts/backfill-translations.ts",
+    "search:dry-run": "ts-node -r tsconfig-paths/register ./src/scripts/search-dry-run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.1",
@@ -51,6 +52,7 @@
     "@nestjs/typeorm": "10.0.2",
     "@nestjs/websockets": "10.4.4",
     "@pinecone-database/pinecone": "^5.1.2",
+    "algoliasearch": "^5.59.0",
     "axios": "1.7.7",
     "bcrypt": "5.1.1",
     "class-transformer": "0.5.1",

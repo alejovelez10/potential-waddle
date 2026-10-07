@@ -22,7 +22,7 @@ describe('EntityOwnershipResolver (ownership / IDOR — T-17-01/02)', () => {
   describe('assertCanRead', () => {
     it('resolves (no throw) for the owner of a lodging', async () => {
       dataSource.query.mockResolvedValueOnce([{ user_id: 'user-owner', town_id: 'town-1' }]);
-      await expect(resolver.assertCanRead('lodging', ID_1, OWNER)).resolves.toEqual({ townId: 'town-1' });
+      await expect(resolver.assertCanRead('lodging', ID_1, OWNER)).resolves.toMatchObject({ townId: 'town-1' });
     });
 
     it('throws ForbiddenException for a non-owner / non-admin (cross-owner IDOR -> 403)', async () => {
@@ -32,12 +32,12 @@ describe('EntityOwnershipResolver (ownership / IDOR — T-17-01/02)', () => {
 
     it('resolves for a super-admin on any entity', async () => {
       dataSource.query.mockResolvedValueOnce([{ user_id: 'someone-else', town_id: 'town-9' }]);
-      await expect(resolver.assertCanRead('lodging', ID_1, SUPER)).resolves.toEqual({ townId: 'town-9' });
+      await expect(resolver.assertCanRead('lodging', ID_1, SUPER)).resolves.toMatchObject({ townId: 'town-9' });
     });
 
     it('resolves for a town-admin of the entity town; throws for a different town', async () => {
       dataSource.query.mockResolvedValueOnce([{ user_id: 'user-owner', town_id: 'town-1' }]);
-      await expect(resolver.assertCanRead('restaurant', ID_1, TOWN_ADMIN)).resolves.toEqual({ townId: 'town-1' });
+      await expect(resolver.assertCanRead('restaurant', ID_1, TOWN_ADMIN)).resolves.toMatchObject({ townId: 'town-1' });
 
       dataSource.query.mockResolvedValueOnce([{ user_id: 'user-owner', town_id: 'town-2' }]);
       await expect(resolver.assertCanRead('restaurant', ID_2, TOWN_ADMIN)).rejects.toBeInstanceOf(ForbiddenException);
@@ -45,7 +45,7 @@ describe('EntityOwnershipResolver (ownership / IDOR — T-17-01/02)', () => {
 
     it('place (no owner): only town-admin of its town or super resolves; a plain user throws', async () => {
       dataSource.query.mockResolvedValueOnce([{ user_id: null, town_id: 'town-1' }]);
-      await expect(resolver.assertCanRead('place', ID_1, TOWN_ADMIN)).resolves.toEqual({ townId: 'town-1' });
+      await expect(resolver.assertCanRead('place', ID_1, TOWN_ADMIN)).resolves.toMatchObject({ townId: 'town-1' });
 
       dataSource.query.mockResolvedValueOnce([{ user_id: null, town_id: 'town-1' }]);
       await expect(resolver.assertCanRead('place', ID_1, OTHER)).rejects.toBeInstanceOf(ForbiddenException);
@@ -53,7 +53,7 @@ describe('EntityOwnershipResolver (ownership / IDOR — T-17-01/02)', () => {
 
     it('experience: owner is the experience guide owner (experience.guide.user_id)', async () => {
       dataSource.query.mockResolvedValueOnce([{ user_id: 'user-owner', town_id: 'town-1' }]);
-      await expect(resolver.assertCanRead('experience', ID_1, OWNER)).resolves.toEqual({ townId: 'town-1' });
+      await expect(resolver.assertCanRead('experience', ID_1, OWNER)).resolves.toMatchObject({ townId: 'town-1' });
     });
 
     it('guide: town comes from guide_town; town-admin of a guide town resolves', async () => {
@@ -61,7 +61,7 @@ describe('EntityOwnershipResolver (ownership / IDOR — T-17-01/02)', () => {
       dataSource.query.mockResolvedValueOnce([{ id: ID_1, user_id: 'user-owner', town_id: null }]);
       // second query: guide_town rows
       dataSource.query.mockResolvedValueOnce([{ town_id: 'town-1' }, { town_id: 'town-3' }]);
-      await expect(resolver.assertCanRead('guide', ID_1, TOWN_ADMIN)).resolves.toEqual({ townId: 'town-1' });
+      await expect(resolver.assertCanRead('guide', ID_1, TOWN_ADMIN)).resolves.toMatchObject({ townId: 'town-1' });
     });
 
     it('throws NotFoundException when the entity row does not exist', async () => {
@@ -82,23 +82,41 @@ describe('EntityOwnershipResolver (ownership / IDOR — T-17-01/02)', () => {
     it('resolves slug-addressed types by slug (e.g. PATCH /guides/:slug)', async () => {
       dataSource.query.mockResolvedValueOnce([{ id: ID_1, user_id: 'user-owner', town_id: null }]);
       dataSource.query.mockResolvedValueOnce([{ town_id: 'town-1' }]);
-      await expect(resolver.assertCanManage('guide', 'juan-perez', OWNER)).resolves.toEqual({ townId: 'town-1' });
+      await expect(resolver.assertCanManage('guide', 'juan-perez', OWNER)).resolves.toMatchObject({ townId: 'town-1' });
       expect(dataSource.query.mock.calls[0][0]).toContain('slug = $1');
       // guide towns are resolved with the real id, not the slug
       expect(dataSource.query.mock.calls[1][1]).toEqual([ID_1]);
     });
 
     it('nested types resolve the owner through the parent business', async () => {
-      dataSource.query.mockResolvedValueOnce([{ id: ID_2, user_id: 'user-owner', town_id: 'town-1' }]);
-      await expect(resolver.assertCanManage('lodging_room_type', ID_2, OWNER)).resolves.toEqual({ townId: 'town-1' });
+      dataSource.query.mockResolvedValueOnce([{ id: ID_2, user_id: 'user-owner', town_id: 'town-1', parent_id: ID_1 }]);
+      await expect(resolver.assertCanManage('lodging_room_type', ID_2, OWNER)).resolves.toMatchObject({
+        townId: 'town-1',
+      });
       expect(dataSource.query.mock.calls[0][0]).toContain('JOIN "lodging"');
+    });
+
+    it('returns the real entity id and, for nested types, the parent id (search sync)', async () => {
+      dataSource.query.mockResolvedValueOnce([{ id: ID_1, user_id: 'user-owner', town_id: 'town-1' }]);
+      await expect(resolver.assertCanManage('lodging', 'hotel-slug', OWNER)).resolves.toEqual({
+        townId: 'town-1',
+        entityId: ID_1,
+        parentId: null,
+      });
+
+      dataSource.query.mockResolvedValueOnce([{ id: ID_2, user_id: 'user-owner', town_id: 'town-1', parent_id: ID_1 }]);
+      await expect(resolver.assertCanManage('commerce_product', ID_2, OWNER)).resolves.toEqual({
+        townId: 'town-1',
+        entityId: ID_2,
+        parentId: ID_1,
+      });
     });
   });
 
   describe('assertCanManage', () => {
     it('allows the owner and rejects a stranger', async () => {
       dataSource.query.mockResolvedValueOnce([{ user_id: 'user-owner', town_id: 'town-1' }]);
-      await expect(resolver.assertCanManage('commerce', ID_1, OWNER)).resolves.toEqual({ townId: 'town-1' });
+      await expect(resolver.assertCanManage('commerce', ID_1, OWNER)).resolves.toMatchObject({ townId: 'town-1' });
 
       dataSource.query.mockResolvedValueOnce([{ user_id: 'user-owner', town_id: 'town-1' }]);
       await expect(resolver.assertCanManage('commerce', ID_1, OTHER)).rejects.toBeInstanceOf(ForbiddenException);
@@ -113,10 +131,12 @@ describe('EntityOwnershipResolver (ownership / IDOR — T-17-01/02)', () => {
 
     it('allows a super-admin and a town-admin of the entity town', async () => {
       dataSource.query.mockResolvedValueOnce([{ user_id: 'user-owner', town_id: 'town-9' }]);
-      await expect(resolver.assertCanModerate('restaurant', ID_1, SUPER)).resolves.toEqual({ townId: 'town-9' });
+      await expect(resolver.assertCanModerate('restaurant', ID_1, SUPER)).resolves.toMatchObject({ townId: 'town-9' });
 
       dataSource.query.mockResolvedValueOnce([{ user_id: 'user-owner', town_id: 'town-1' }]);
-      await expect(resolver.assertCanModerate('transport', ID_1, TOWN_ADMIN)).resolves.toEqual({ townId: 'town-1' });
+      await expect(resolver.assertCanModerate('transport', ID_1, TOWN_ADMIN)).resolves.toMatchObject({
+        townId: 'town-1',
+      });
     });
 
     it('rejects a town-admin of a different town', async () => {

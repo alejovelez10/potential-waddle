@@ -5,7 +5,10 @@ import { WompiService } from '../services/wompi.service';
 import { PaymentsService } from '../services/payments.service';
 import { SubscriptionsService } from '../services/subscriptions.service';
 import { WompiWebhookEvent } from '../interfaces';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: Premium changes are pushed from SubscriptionsService (it knows the entity).
+@SearchSyncSkip()
 @Controller('webhooks')
 @ApiTags('Webhooks')
 export class WebhooksController {

@@ -7,6 +7,7 @@ import {
   AdminTranslatableEntityType,
 } from './seeding/admin-translatable-entities.constant';
 import { TranslationSeedingService } from './seeding/translation-seeding.service';
+import { SearchSync, SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
 /**
  * AdminTranslationsController — superadmin-only HTTP surface for translating
@@ -39,6 +40,7 @@ export class AdminTranslationsController {
   // Per-row ✨ button. body.force=true bypasses the revisado guard (DD-5).
   // ---------------------------------------------------------------------------
   @Post('entities/:entityType/:entityId/seed')
+  @SearchSync('param:entityType', { param: 'entityId' })
   @SuperAdmin()
   seed(
     @Param('entityType') entityType: string,
@@ -54,6 +56,7 @@ export class AdminTranslationsController {
   // Manual EN edit from the inline cell. Writes source='revisado'.
   // ---------------------------------------------------------------------------
   @Patch('entities/:entityType/:entityId/override')
+  @SearchSync('param:entityType', { param: 'entityId' })
   @SuperAdmin()
   override(
     @Param('entityType') entityType: string,
@@ -98,6 +101,7 @@ export class AdminTranslationsController {
   // only touches rows without an EN row / with a stale one (never revisado).
   // ---------------------------------------------------------------------------
   @Post(':entityType/seed-missing')
+  @SearchSyncSkip() // bulk: picked up by the daily reindex
   @SuperAdmin()
   seedMissing(@Param('entityType') entityType: string, @Body('batchSize') batchSize: number | undefined) {
     this.assertAdminEntityType(entityType);

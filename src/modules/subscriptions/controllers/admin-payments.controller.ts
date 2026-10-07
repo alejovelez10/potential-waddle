@@ -5,7 +5,10 @@ import { SuperAdmin } from '../../auth/decorators';
 import { PaymentsService, SubscriptionsService } from '../services';
 import { PaymentDto, AdminUpdatePaymentDto } from '../dto';
 import { PaymentStatus } from '../entities';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: Premium changes are pushed from SubscriptionsService (it knows the entity).
+@SearchSyncSkip()
 @Controller('payments/admin')
 @ApiTags('Admin - Payments')
 @SuperAdmin()

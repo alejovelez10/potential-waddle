@@ -9,6 +9,7 @@ import { Lodging } from 'src/modules/lodgings/entities/lodging.entity';
 import { Restaurant } from 'src/modules/restaurants/entities/restaurant.entity';
 import { Commerce } from 'src/modules/commerce/entities/commerce.entity';
 import { GoogleReview } from '../entities/google-review.entity';
+import { SearchSyncQueue } from 'src/modules/search/search-sync.queue';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -134,6 +135,7 @@ describe('GoogleSyncService', () => {
         { provide: getRepositoryToken(Commerce), useValue: commerceRepo },
         { provide: PlaceIdResolverService, useValue: placeIdResolver },
         { provide: GOOGLE_REVIEWS_SOURCE, useValue: source },
+        { provide: SearchSyncQueue, useValue: { mark: jest.fn() } },
       ],
     }).compile();
 
@@ -523,6 +525,7 @@ describe('GoogleSyncService.reconcileEntity', () => {
         { provide: getRepositoryToken(Commerce), useValue: { findOne: jest.fn() } },
         { provide: PlaceIdResolverService, useValue: placeIdResolver },
         { provide: GOOGLE_REVIEWS_SOURCE, useValue: source },
+        { provide: SearchSyncQueue, useValue: { mark: jest.fn() } },
       ],
     }).compile();
 

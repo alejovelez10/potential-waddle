@@ -45,4 +45,11 @@ export const JoiValidationSchema = Joi.object({
   MAXMIND_ACCOUNT_ID: Joi.string().optional(),
   MAXMIND_LICENSE_KEY: Joi.string().optional(),
   GEOLITE_DB_PATH: Joi.string().optional(),
+
+  // Algolia (search) — all optional: without the write key + sync flag the SearchModule is a no-op
+  ALGOLIA_APP_ID: Joi.string().allow('').optional(),
+  ALGOLIA_ADMIN_API_KEY: Joi.string().allow('').optional(),
+  ALGOLIA_INDEX_PREFIX: Joi.string().default('prod'),
+  SEARCH_SYNC_ENABLED: Joi.boolean().default(false),
+  SEARCH_REINDEX_SECRET: Joi.string().allow('').optional(),
 });

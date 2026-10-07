@@ -34,6 +34,7 @@ import { User } from '../users/entities';
 import { ContentTypes } from '../common/constants';
 import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
 import { EntityAccess } from '../common/decorators/entity-access.decorator';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @ApiTags(SwaggerTags.PublicEvents)
 @Controller('public-events')
@@ -41,6 +42,7 @@ export class PublicEventsController {
   constructor(private readonly publicEventsService: PublicEventsService) {}
 
   @Post()
+  @SearchSync('event', { fromResponse: true })
   @Auth()
   @ApiOperation({ summary: 'Create a new public event' })
   @ApiResponse({

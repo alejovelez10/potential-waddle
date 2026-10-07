@@ -21,6 +21,7 @@ import { EntityOwnershipResolver } from 'src/modules/common/services/entity-owne
 import { User } from 'src/modules/users/entities';
 import { CreateBadgeDto, UpdateBadgeDto, AdminBadgesFiltersDto } from '../dto';
 import { BadgesService, BadgeEntityType } from '../services';
+import { SearchSync, SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('badges')
 @ApiTags(SwaggerTags.Badges)
@@ -43,6 +44,7 @@ export class BadgesController {
   // * CREATE NEW BADGE
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSyncSkip()
   @SuperAdmin()
   create(@Body() createBadgeDto: CreateBadgeDto) {
     return this.badgesService.create(createBadgeDto);
@@ -69,6 +71,7 @@ export class BadgesController {
   // * ASSIGN BADGES TO AN ENTITY
   // * -------------------------------------------------------------------------------------------------------------
   @Put('entity/:entityType/:entityId')
+  @SearchSync('param:entityType', { param: 'entityId' })
   @Auth()
   @ApiOperation({ summary: 'Assign badges to an entity (replaces existing)' })
   async assignBadges(
@@ -85,6 +88,7 @@ export class BadgesController {
   // * REMOVE A BADGE FROM AN ENTITY
   // * -------------------------------------------------------------------------------------------------------------
   @Delete('entity/:entityType/:entityId/:badgeId')
+  @SearchSync('param:entityType', { param: 'entityId' })
   @Auth()
   @ApiOperation({ summary: 'Remove a badge from an entity' })
   async removeBadgeFromEntity(
@@ -112,6 +116,7 @@ export class BadgesController {
   // * UPLOAD BADGE IMAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Post(':id/image')
+  @SearchSync('badge', { param: 'id' })
   @SuperAdmin()
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Upload badge image' })
@@ -123,6 +128,7 @@ export class BadgesController {
   // * DELETE BADGE IMAGE
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id/image')
+  @SearchSync('badge', { param: 'id' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Delete badge image' })
   deleteImage(@Param('id') id: string) {
@@ -133,6 +139,7 @@ export class BadgesController {
   // * UPDATE BADGE
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @SearchSync('badge', { param: 'id' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Update badge by ID' })
   update(@Param('id') id: string, @Body() updateBadgeDto: UpdateBadgeDto) {
@@ -143,6 +150,7 @@ export class BadgesController {
   // * DELETE BADGE
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @SearchSync('badge', { param: 'id' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Delete badge by ID' })
   remove(@Param('id') id: string) {

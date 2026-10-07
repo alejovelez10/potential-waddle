@@ -7,6 +7,7 @@ import { SwaggerTags } from 'src/config';
 import { LodgingsService } from './lodgings.service';
 import { AdminLodgingsFiltersDto, AdminLodgingsListDto, LodgingFullDto } from './dto';
 import { RejectLodgingDto } from './dto/reject-lodging.dto';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('admin/lodgings')
 @ApiTags(SwaggerTags.Lodgings)
@@ -27,6 +28,7 @@ export class AdminLodgingsController {
   // * APPROVE LODGING
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/approve')
+  @SearchSync('lodging', { param: 'identifier' })
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ description: 'Lodging approved', type: LodgingFullDto })
   approve(@Param('identifier') identifier: string): Promise<LodgingFullDto> {
@@ -37,6 +39,7 @@ export class AdminLodgingsController {
   // * REJECT LODGING
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/reject')
+  @SearchSync('lodging', { param: 'identifier' })
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ description: 'Lodging rejected', type: LodgingFullDto })
   reject(@Param('identifier') identifier: string, @Body() body: RejectLodgingDto): Promise<LodgingFullDto> {

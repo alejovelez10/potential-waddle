@@ -24,6 +24,7 @@ import { EntityOwnershipResolver } from '../common/services/entity-ownership.res
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { EntityAccess } from '../common/decorators/entity-access.decorator';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('transport')
 @ApiTags(SwaggerTags.Transport)
@@ -37,6 +38,7 @@ export class TransportController {
   // * CREATE TRANSPORT
   // * ----------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSync('transport', { fromResponse: true })
   @Auth()
   @ApiOperation({ summary: 'Create a new transport' })
   @ApiOkResponse({ description: 'The transport has been successfully created.', type: TransportDto })
@@ -118,6 +120,7 @@ export class TransportController {
   // * SUBMIT TRANSPORT FOR REVIEW (owner)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':id/submit-for-review')
+  @SearchSync('transport', { param: 'id' })
   @Auth()
   @ApiOkResponse({ description: 'The transport has been submitted for review.', type: TransportDto })
   submitForReview(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User) {
@@ -128,6 +131,7 @@ export class TransportController {
   // * APPROVE TRANSPORT (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':id/approve')
+  @SearchSync('transport', { param: 'id' })
   @Auth()
   @ApiOkResponse({ description: 'The transport has been approved.', type: TransportDto })
   async approve(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User) {
@@ -139,6 +143,7 @@ export class TransportController {
   // * REJECT TRANSPORT (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':id/reject')
+  @SearchSync('transport', { param: 'id' })
   @Auth()
   @ApiOkResponse({ description: 'The transport has been rejected.', type: TransportDto })
   async reject(@Param('id', ParseUUIDPipe) id: string, @Body() body: { reason: string }, @GetUser() user: User) {

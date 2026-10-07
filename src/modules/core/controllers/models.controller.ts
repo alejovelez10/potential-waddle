@@ -5,7 +5,10 @@ import { Auth } from 'src/modules/auth/decorators';
 import { CreateModelDto, AdminModelsFiltersDto } from '../dto';
 import { ModelsService } from '../services';
 import { SuperAdmin } from '../../auth/decorators';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: these routes never change catalog records.
+@SearchSyncSkip()
 @Controller('models')
 @ApiTags(SwaggerTags.Models)
 export class ModelsController {

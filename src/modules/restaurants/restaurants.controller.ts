@@ -39,6 +39,7 @@ import { EntityOwnershipResolver } from '../common/services/entity-ownership.res
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { RequestLocale } from '../translations/request-locale.decorator';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller(SwaggerTags.Restaurants)
 @ApiTags(SwaggerTags.Restaurants)
@@ -124,6 +125,7 @@ export class RestaurantsController {
   // * SUBMIT RESTAURANT FOR REVIEW (owner)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/submit-for-review')
+  @SearchSync('restaurant', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Restaurant submitted for review', type: RestaurantDto })
   submitForReview(@Param('identifier') identifier: string, @GetUser() user: User) {
@@ -134,6 +136,7 @@ export class RestaurantsController {
   // * APPROVE RESTAURANT (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/:identifier/approve')
+  @SearchSync('restaurant', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Restaurant approved', type: RestaurantDto })
   async approve(@Param('identifier') identifier: string, @GetUser() user: User) {
@@ -145,6 +148,7 @@ export class RestaurantsController {
   // * REJECT RESTAURANT (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/:identifier/reject')
+  @SearchSync('restaurant', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Restaurant rejected', type: RestaurantDto })
   async reject(@Param('identifier') identifier: string, @Body() body: { reason: string }, @GetUser() user: User) {
@@ -166,6 +170,7 @@ export class RestaurantsController {
   // * CREATE RESTAURANT
   // * ----------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSync('restaurant', { fromResponse: true })
   @Auth()
   @ApiOkResponse({ description: 'Restaurant Created', type: RestaurantDto })
   create(@Body() createRestaurantDto: CreateRestaurantDto, @GetUser() user: User) {

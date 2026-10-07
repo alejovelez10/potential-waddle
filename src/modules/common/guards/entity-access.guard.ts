@@ -5,6 +5,17 @@ import { EntityOwnershipResolver } from '../services/entity-ownership.resolver';
 export const ENTITY_ACCESS_KEY = 'entity-access';
 
 /**
+ * Stored on the request once the guard passes: the entity type and the REAL ids it resolved
+ * (routes may use slugs; after a DELETE the row is gone). The search sync interceptor reads it.
+ */
+export interface ResolvedEntityAccess {
+  entityType: string;
+  ids: string[];
+  /** Child types (lodging_room_type, commerce_product): their parent business ids. */
+  parentIds: string[];
+}
+
+/**
  * - manage:   owner, town-admin of the entity's town, or super-admin (edit own business data)
  * - moderate: town-admin of the entity's town or super-admin, NEVER the owner alone
  *             (approve/reject, reassign owner, bulk delete)
@@ -60,14 +71,18 @@ export class EntityAccessGuard implements CanActivate {
       identifiers = [request.params?.[options.param ?? 'identifier']];
     }
 
+    const ids: string[] = [];
+    const parentIds: string[] = [];
     for (const identifier of identifiers) {
-      if (options.level === 'moderate') {
-        await this.ownership.assertCanModerate(entityType, identifier, user);
-      } else {
-        await this.ownership.assertCanManage(entityType, identifier, user);
-      }
+      const result =
+        options.level === 'moderate'
+          ? await this.ownership.assertCanModerate(entityType, identifier, user)
+          : await this.ownership.assertCanManage(entityType, identifier, user);
+      ids.push(result.entityId);
+      if (result.parentId) parentIds.push(result.parentId);
     }
 
+    request.entityAccess = { entityType, ids, parentIds } satisfies ResolvedEntityAccess;
     return true;
   }
 

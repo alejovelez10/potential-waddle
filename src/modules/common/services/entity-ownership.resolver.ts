@@ -19,11 +19,24 @@ interface OwnerRow {
   id: string;
   user_id: string | null;
   town_id: string | null;
+  /** Child types only: id of the parent business (lodging / commerce). */
+  parent_id?: string | null;
 }
 
 interface ResolvedEntity {
+  id: string;
+  parentId: string | null;
   ownerId: string | null;
   townIds: (string | null)[];
+}
+
+/** What the assert* methods return: the town for tenant context + the resolved ids (search sync). */
+export interface EntityAccessResult {
+  townId: string | null;
+  /** Real id of the entity (routes may address it by slug). */
+  entityId: string;
+  /** Child types only: the parent business id. */
+  parentId: string | null;
 }
 
 /**
@@ -47,9 +60,9 @@ const OWNER_QUERY: Record<string, string> = {
   public_event: 'SELECT id, user_id, town_id FROM "public_event" WHERE {key} = $1',
   // Children resolve ownership through their parent business
   lodging_room_type:
-    'SELECT rt.id, l.user_id, l.town_id FROM "lodging_room_type" rt JOIN "lodging" l ON l.id = rt.lodging_id WHERE rt.{key} = $1',
+    'SELECT rt.id, l.user_id, l.town_id, l.id AS parent_id FROM "lodging_room_type" rt JOIN "lodging" l ON l.id = rt.lodging_id WHERE rt.{key} = $1',
   commerce_product:
-    'SELECT p.id, c.user_id, c.town_id FROM "commerce_product" p JOIN "commerce" c ON c.id = p.commerce_id WHERE p.{key} = $1',
+    'SELECT p.id, c.user_id, c.town_id, c.id AS parent_id FROM "commerce_product" p JOIN "commerce" c ON c.id = p.commerce_id WHERE p.{key} = $1',
 };
 
 /** Types that can also be addressed by slug (routes like PATCH /guides/:slug). */
@@ -65,7 +78,7 @@ export class EntityOwnershipResolver {
    * @throws NotFoundException if the entity (or entityType) does not exist.
    * @throws ForbiddenException if the user is neither owner, town-admin of its town, nor super.
    */
-  async assertCanRead(entityType: string, entityId: string, user: User): Promise<{ townId: string | null }> {
+  async assertCanRead(entityType: string, entityId: string, user: User): Promise<EntityAccessResult> {
     return this.assertOwnerOrAdmin(entityType, entityId, user, 'No tienes acceso a las analíticas de este negocio');
   }
 
@@ -73,7 +86,7 @@ export class EntityOwnershipResolver {
    * Authorize `user` to modify owner-managed data of (entityType, entityId): promotions,
    * documents, verification requests. Same rule as reads: owner, town-admin or super.
    */
-  async assertCanManage(entityType: string, entityId: string, user: User): Promise<{ townId: string | null }> {
+  async assertCanManage(entityType: string, entityId: string, user: User): Promise<EntityAccessResult> {
     return this.assertOwnerOrAdmin(entityType, entityId, user, 'No tienes permisos sobre este negocio');
   }
 
@@ -81,13 +94,13 @@ export class EntityOwnershipResolver {
    * Authorize `user` to moderate (approve/reject) (entityType, entityId): super-admin or a
    * town-admin of the entity's town. The owner alone is NOT enough.
    */
-  async assertCanModerate(entityType: string, entityId: string, user: User): Promise<{ townId: string | null }> {
-    const { townIds } = await this.resolve(entityType, entityId);
+  async assertCanModerate(entityType: string, entityId: string, user: User): Promise<EntityAccessResult> {
+    const { id, parentId, townIds } = await this.resolve(entityType, entityId);
 
-    if (user?.isSuperUser) return { townId: townIds[0] ?? null };
+    if (user?.isSuperUser) return { townId: townIds[0] ?? null, entityId: id, parentId };
 
     const matchedTown = this.matchAdminTown(townIds, user);
-    if (matchedTown) return { townId: matchedTown };
+    if (matchedTown) return { townId: matchedTown, entityId: id, parentId };
 
     throw new ForbiddenException('Solo un administrador puede realizar esta acción');
   }
@@ -104,12 +117,12 @@ export class EntityOwnershipResolver {
     entityId: string,
     user: User,
     forbiddenMessage: string,
-  ): Promise<{ townId: string | null }> {
-    const { ownerId, townIds } = await this.resolve(entityType, entityId);
+  ): Promise<EntityAccessResult> {
+    const { id, parentId, ownerId, townIds } = await this.resolve(entityType, entityId);
 
     // Super-admin sees everything.
     if (user?.isSuperUser) {
-      return { townId: townIds[0] ?? null };
+      return { townId: townIds[0] ?? null, entityId: id, parentId };
     }
 
     const isOwner = !!ownerId && ownerId === user?.id;
@@ -117,7 +130,7 @@ export class EntityOwnershipResolver {
     const matchedTown = this.matchAdminTown(townIds, user);
 
     if (isOwner || matchedTown) {
-      return { townId: matchedTown ?? townIds[0] ?? null };
+      return { townId: matchedTown ?? townIds[0] ?? null, entityId: id, parentId };
     }
 
     throw new ForbiddenException(forbiddenMessage);
@@ -144,7 +157,7 @@ export class EntityOwnershipResolver {
     // Guide stores its towns in guide_town (a guide can belong to several towns).
     const townIds: (string | null)[] = entityType === 'guide' ? await this.resolveGuideTowns(row.id) : [row.town_id];
 
-    return { ownerId: row.user_id, townIds };
+    return { id: row.id, parentId: row.parent_id ?? null, ownerId: row.user_id, townIds };
   }
 
   /** Resolve the set of town_ids a guide belongs to (guide_town join table). */

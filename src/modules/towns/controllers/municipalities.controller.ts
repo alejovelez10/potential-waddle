@@ -6,7 +6,10 @@ import { SwaggerTags } from 'src/config';
 import { Auth } from 'src/modules/auth/decorators';
 import { CreateMunicipalityDto, UpdateMunicipalityDto, AdminDepartmentsFiltersDto } from '../dto';
 import { MunicipalitiesService } from '../services/municipalities.service';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: picked up by the daily reindex.
+@SearchSyncSkip()
 @Controller('municipalities')
 @ApiTags(SwaggerTags.Municipality)
 export class MunicipalitiesController {

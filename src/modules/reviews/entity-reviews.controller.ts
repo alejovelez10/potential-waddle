@@ -20,10 +20,12 @@ import { EntityReviewsService } from './services';
 import { CreateReviewDto, UpdateReviewDto } from './dto';
 import { ReviewDomainsEnum, ReviewStatusEnum } from './enums';
 import { SwaggerTags } from 'src/config';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 // * ----------------------------------------------------------------------------------------------------------------
 // * LODGING REVIEWS CONTROLLER
 // * ----------------------------------------------------------------------------------------------------------------
+@SearchSync('lodging', { param: 'id' })
 @Controller('lodgings')
 @ApiTags(SwaggerTags.Reviews)
 export class LodgingReviewsController {
@@ -192,6 +194,7 @@ export class LodgingReviewsController {
 // * ----------------------------------------------------------------------------------------------------------------
 // * RESTAURANT REVIEWS CONTROLLER
 // * ----------------------------------------------------------------------------------------------------------------
+@SearchSync('restaurant', { param: 'id' })
 @Controller('restaurants')
 @ApiTags(SwaggerTags.Reviews)
 export class RestaurantReviewsController {
@@ -360,6 +363,7 @@ export class RestaurantReviewsController {
 // * ----------------------------------------------------------------------------------------------------------------
 // * COMMERCE REVIEWS CONTROLLER
 // * ----------------------------------------------------------------------------------------------------------------
+@SearchSync('commerce', { param: 'id' })
 @Controller('commerce')
 @ApiTags(SwaggerTags.Reviews)
 export class CommerceReviewsController {
@@ -528,6 +532,7 @@ export class CommerceReviewsController {
 // * ----------------------------------------------------------------------------------------------------------------
 // * EXPERIENCE REVIEWS CONTROLLER
 // * ----------------------------------------------------------------------------------------------------------------
+@SearchSync('experience', { param: 'id' })
 @Controller('experiences')
 @ApiTags(SwaggerTags.Reviews)
 export class ExperienceReviewsController {
@@ -696,6 +701,7 @@ export class ExperienceReviewsController {
 // * ----------------------------------------------------------------------------------------------------------------
 // * TRANSPORT REVIEWS CONTROLLER
 // * ----------------------------------------------------------------------------------------------------------------
+@SearchSync('transport', { param: 'id' })
 @Controller('transport')
 @ApiTags(SwaggerTags.Reviews)
 export class TransportReviewsController {
@@ -864,6 +870,7 @@ export class TransportReviewsController {
 // * ----------------------------------------------------------------------------------------------------------------
 // * GUIDE REVIEWS CONTROLLER
 // * ----------------------------------------------------------------------------------------------------------------
+@SearchSync('guide', { param: 'id' })
 @Controller('guides')
 @ApiTags(SwaggerTags.Reviews)
 export class GuideReviewsController {

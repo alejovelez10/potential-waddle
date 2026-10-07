@@ -44,6 +44,8 @@ import { TermsModule } from './modules/terms/terms.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ForcedPublicModule } from './modules/forced-public/forced-public.module';
 import { TranslationsModule } from './modules/translations/translations.module';
+import { SearchModule } from './modules/search/search.module';
+import { SearchSyncModule } from './modules/search/search-sync.module';
 
 @Module({
   imports: [
@@ -102,6 +104,8 @@ import { TranslationsModule } from './modules/translations/translations.module';
     NotificationsModule,
     ForcedPublicModule,
     TranslationsModule,
+    SearchSyncModule,
+    SearchModule,
   ],
   controllers: [],
   providers: [

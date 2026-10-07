@@ -29,6 +29,7 @@ const PROFILE_PATH: Partial<Record<EntityType, string>> = {
   transport: 'transport',
 };
 import { User } from 'src/modules/users/entities';
+import { SearchSyncQueue } from 'src/modules/search/search-sync.queue';
 
 @Injectable()
 export class SubscriptionsService {
@@ -46,7 +47,13 @@ export class SubscriptionsService {
     private readonly configService: ConfigService,
     private readonly ownership: EntityOwnershipResolver,
     private readonly resendService: ResendService,
+    private readonly searchSync: SearchSyncQueue,
   ) {}
+
+  /** Premium changed → refresh the catalog records (experiences follow their guide in the indexer). */
+  private syncPremium(subscriptions: Pick<Subscription, 'entityType' | 'entityId'>[]) {
+    for (const subscription of subscriptions) this.searchSync.mark(subscription.entityType, subscription.entityId);
+  }
 
   // * ----------------------------------------------------------------------------------------------------------------
   // * QUERIES
@@ -263,6 +270,7 @@ export class SubscriptionsService {
     for (const subscription of newlyActivated) {
       this.notifyPremiumAssistance(subscription);
     }
+    this.syncPremium(newlyActivated);
   }
 
   /** Premium activated → alert the Binntu team (accompaniment queue) and reassure the owner. */
@@ -333,7 +341,12 @@ export class SubscriptionsService {
   // * ----------------------------------------------------------------------------------------------------------------
 
   async failSubscriptionsByPayment(paymentId: string): Promise<void> {
+    const affected = await this.subscriptionRepository.find({
+      where: { paymentId },
+      select: { entityType: true, entityId: true },
+    });
     await this.subscriptionRepository.update({ paymentId }, { status: 'past_due' });
+    this.syncPremium(affected);
   }
 
   // * ----------------------------------------------------------------------------------------------------------------
@@ -355,6 +368,7 @@ export class SubscriptionsService {
     subscription.canceledAt = new Date();
 
     await this.subscriptionRepository.save(subscription);
+    this.syncPremium([subscription]);
     return new SubscriptionDto(subscription);
   }
 
@@ -456,6 +470,7 @@ export class SubscriptionsService {
     });
 
     await this.subscriptionRepository.save(subscription);
+    this.syncPremium([subscription]);
 
     // Recargar con relaciones
     const savedSubscription = await this.subscriptionRepository.findOne({
@@ -477,7 +492,9 @@ export class SubscriptionsService {
 
     if (!subscription) throw new NotFoundException(`Subscription with id ${id} not found`);
 
+    const { entityType, entityId } = subscription;
     await this.subscriptionRepository.remove(subscription);
+    this.syncPremium([{ entityType, entityId }]);
   }
 
   /**
@@ -488,7 +505,12 @@ export class SubscriptionsService {
   async bulkDeleteSubscriptions(ids: string[]): Promise<{ deleted: number }> {
     if (!ids?.length) return { deleted: 0 };
 
+    const affected = await this.subscriptionRepository.find({
+      where: { id: In(ids) },
+      select: { entityType: true, entityId: true },
+    });
     const result = await this.subscriptionRepository.delete({ id: In(ids) });
+    this.syncPremium(affected);
     return { deleted: result.affected ?? 0 };
   }
 
@@ -611,6 +633,7 @@ export class SubscriptionsService {
     subscription.canceledAt = new Date();
 
     await this.subscriptionRepository.save(subscription);
+    this.syncPremium([subscription]);
     return new SubscriptionDto(subscription);
   }
 }

@@ -42,6 +42,7 @@ import { ContentTypes } from '../common/constants';
 import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
 import { LodgingVectorDto } from './dto/lodging-vector.dto';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('lodgings')
 @ApiTags(SwaggerTags.Lodgings)
@@ -137,6 +138,7 @@ export class LodgingsController {
   // * CREATE LODGING
   // * ----------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSync('lodging', { fromResponse: true })
   @Auth()
   @ApiOkResponse({ description: 'Lodging Created', type: LodgingFullDto })
   create(@Body() createLodgingDto: CreateLodgingDto, @GetUser() user: User) {
@@ -213,6 +215,7 @@ export class LodgingsController {
   // * SUBMIT LODGING FOR REVIEW
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/submit-for-review')
+  @SearchSync('lodging', { param: 'identifier' })
   @Auth()
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ description: 'Lodging submitted for review', type: LodgingFullDto })

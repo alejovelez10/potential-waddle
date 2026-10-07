@@ -8,6 +8,7 @@ import { ModelsEnum } from '../enums';
 import { RequestLocale } from '../../translations/request-locale.decorator';
 import { TranslationResolverService } from '../../translations/translation-resolver.service';
 import { SuperAdmin } from '../../auth/decorators';
+import { SearchSync, SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('facilities')
 @ApiTags(SwaggerTags.Facilities)
@@ -30,6 +31,7 @@ export class FacilitiesController {
   // * CREATE NEW FACILITY
   // * -------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSyncSkip()
   @SuperAdmin()
   create(@Body() createFacilityDto: CreateFacilityDto) {
     return this.facilitiesService.create(createFacilityDto);
@@ -85,6 +87,7 @@ export class FacilitiesController {
   // * UPDATE FACILITY
   // * -------------------------------------------------------------------------------------------------------------
   @Patch(':id')
+  @SearchSync('facility', { param: 'id' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Update facility by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Facility updated successfully' })
@@ -96,6 +99,7 @@ export class FacilitiesController {
   // * DELETE FACILITY
   // * -------------------------------------------------------------------------------------------------------------
   @Delete(':id')
+  @SearchSync('facility', { param: 'id' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Delete facility by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Facility deleted successfully' })

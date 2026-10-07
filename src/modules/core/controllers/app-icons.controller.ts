@@ -5,7 +5,10 @@ import { Auth } from 'src/modules/auth/decorators';
 import { CreateAppIconDto, UpdateAppIconDto, AdminAppIconsFiltersDto } from '../dto';
 import { AppIconsService } from '../services';
 import { SuperAdmin } from '../../auth/decorators';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: these routes never change catalog records.
+@SearchSyncSkip()
 @Controller('app-icons')
 @ApiTags(SwaggerTags.AppIcons)
 export class AppIconsController {

@@ -13,7 +13,10 @@ import { AssistanceStatus, EntityType } from '../entities';
 import { GetUser } from '../../common/decorators';
 import { User } from '../../users/entities';
 import { UsersService } from '../../users/services/users.service';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: Premium changes are pushed from SubscriptionsService (it knows the entity).
+@SearchSyncSkip()
 @Controller('subscriptions/admin')
 @ApiTags('Admin - Subscriptions')
 @SuperAdmin()

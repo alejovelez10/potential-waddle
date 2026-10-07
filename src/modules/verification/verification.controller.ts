@@ -8,6 +8,7 @@ import { User } from '../users/entities';
 import { VerificationReasonDto } from './dto/verification-reason.dto';
 import { VerificationStatus } from './entities/entity-verification.entity';
 import { VerificationService } from './verification.service';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('verification')
 @ApiTags('Verification')
@@ -27,6 +28,7 @@ export class VerificationController {
   }
 
   @Post('admin/:entityType/:entityId/approve')
+  @SearchSync('param:entityType', { param: 'entityId' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Grant the Verified seal (every required document must be approved)' })
   approve(
@@ -38,6 +40,7 @@ export class VerificationController {
   }
 
   @Post('admin/:entityType/:entityId/reject')
+  @SearchSync('param:entityType', { param: 'entityId' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Decline a verification request' })
   reject(
@@ -50,6 +53,7 @@ export class VerificationController {
   }
 
   @Post('admin/:entityType/:entityId/revoke')
+  @SearchSync('param:entityType', { param: 'entityId' })
   @SuperAdmin()
   @ApiOperation({ summary: 'Withdraw a granted Verified seal' })
   revoke(

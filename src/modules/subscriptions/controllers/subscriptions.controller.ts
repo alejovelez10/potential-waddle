@@ -9,7 +9,10 @@ import { SubscriptionsService } from '../services';
 import { PaymentsService } from '../services';
 import { SubscriptionDto, PaymentDto, CreateCheckoutDto, CheckoutResponseDto } from '../dto';
 import { EntityType } from '../entities';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: Premium changes are pushed from SubscriptionsService (it knows the entity).
+@SearchSyncSkip()
 @Controller('subscriptions')
 @ApiTags('Subscriptions')
 export class SubscriptionsController {

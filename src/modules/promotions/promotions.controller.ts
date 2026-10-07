@@ -23,7 +23,10 @@ import { Auth } from '../auth/decorators';
 import { GetUser } from '../common/decorators';
 import { EntityOwnershipResolver } from '../common/services/entity-ownership.resolver';
 import { User } from '../users/entities';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 
+// Search sync: pushed from PromotionsService (it knows the promoted entity).
+@SearchSyncSkip()
 @Controller('promotions')
 @ApiTags(SwaggerTags.Promotions)
 export class PromotionsController {

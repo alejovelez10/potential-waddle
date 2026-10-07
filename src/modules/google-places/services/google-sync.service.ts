@@ -16,6 +16,7 @@ import {
   GOOGLE_REVIEWS_SOURCE,
   GoogleReviewsSourceService,
 } from '../interfaces/google-reviews-source.interface';
+import { SearchSyncQueue } from 'src/modules/search/search-sync.queue';
 
 type EntityType = 'lodging' | 'restaurant' | 'commerce';
 type TriggerType = 'cron' | 'manual';
@@ -74,6 +75,7 @@ export class GoogleSyncService {
     private readonly placeIdResolver: PlaceIdResolverService,
     @Inject(GOOGLE_REVIEWS_SOURCE)
     private readonly source: GoogleReviewsSourceService,
+    private readonly searchSync: SearchSyncQueue,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -292,6 +294,8 @@ export class GoogleSyncService {
       return syncLog;
     } finally {
       await qr.release();
+      // Runs after the 202 of the manual sync route: refresh the Google rating in the catalog now.
+      this.searchSync.mark(entityType, entityId);
     }
   }
 
@@ -502,6 +506,8 @@ export class GoogleSyncService {
       return syncLog;
     } finally {
       await qr.release();
+      // Runs after the 202 of the manual sync route: refresh the Google rating in the catalog now.
+      this.searchSync.mark(entityType, entityId);
     }
   }
 

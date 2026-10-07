@@ -43,6 +43,7 @@ import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { RequestLocale } from '../translations/request-locale.decorator';
 import { EntityAccess } from '../common/decorators/entity-access.decorator';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller('guides')
 @ApiTags(SwaggerTags.Guides)
@@ -56,6 +57,7 @@ export class GuidesController {
   // * CREATE GUIDE
   // * ----------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSync('guide', { fromResponse: true })
   @Auth()
   @ApiOperation({ summary: 'Create a new guide' })
   @ApiOkResponse({ description: 'The guide has been successfully created.', type: GuideDto })
@@ -145,6 +147,7 @@ export class GuidesController {
   // * SUBMIT GUIDE FOR REVIEW (owner)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/submit-for-review')
+  @SearchSync('guide', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Guide submitted for review', type: GuideDto })
   submitForReview(@Param('identifier') identifier: string, @GetUser() user: User) {
@@ -155,6 +158,7 @@ export class GuidesController {
   // * APPROVE GUIDE (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/:identifier/approve')
+  @SearchSync('guide', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Guide approved', type: GuideDto })
   async approve(@Param('identifier') identifier: string, @GetUser() user: User) {
@@ -166,6 +170,7 @@ export class GuidesController {
   // * REJECT GUIDE (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/:identifier/reject')
+  @SearchSync('guide', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Guide rejected', type: GuideDto })
   async reject(@Param('identifier') identifier: string, @Body() body: { reason: string }, @GetUser() user: User) {

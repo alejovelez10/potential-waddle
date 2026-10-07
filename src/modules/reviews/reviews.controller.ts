@@ -19,6 +19,7 @@ import { ReviewFindAllApiQueries } from './decorators';
 import { GenericFindAllFilters, GetUser } from '../common/decorators';
 import { Auth } from '../auth/decorators';
 import { User } from '../users/entities';
+import { SearchSyncSkip } from 'src/modules/search/decorators/search-sync.decorator';
 // import { Auth } from '../auth/decorators';
 
 @Controller('admin/reviews')
@@ -39,6 +40,7 @@ export class ReviewsController {
   // * APPROVE REVIEW
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':id/change-status')
+  @SearchSyncSkip() // changing a review status does not recompute the entity rating
   @Auth(AppPermissions.UPDATE_REVIEW_STATUS)
   @ApiOperation({ summary: 'This endpoint changes the review status and adds a new entry to the history report.' })
   @ApiParam({ name: 'id', type: 'string', description: 'Review UUID' })

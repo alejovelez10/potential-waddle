@@ -39,6 +39,7 @@ import { ReorderImagesDto } from '../common/dto/reoder-images.dto';
 import { ExperienceVectorDto } from './dto/experience-vector.dto';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { RequestLocale } from '../translations/request-locale.decorator';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller(SwaggerTags.Experiences)
 @ApiTags(SwaggerTags.Experiences)
@@ -133,6 +134,7 @@ export class ExperiencesController {
   // * SUBMIT EXPERIENCE FOR REVIEW (owner)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/submit-for-review')
+  @SearchSync('experience', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Experience submitted for review', type: ExperienceDto })
   submitForReview(@Param('identifier') identifier: string, @GetUser() user: User) {
@@ -143,6 +145,7 @@ export class ExperiencesController {
   // * APPROVE EXPERIENCE (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/:identifier/approve')
+  @SearchSync('experience', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Experience approved', type: ExperienceDto })
   async approve(@Param('identifier') identifier: string, @GetUser() user: User) {
@@ -154,6 +157,7 @@ export class ExperiencesController {
   // * REJECT EXPERIENCE (admin)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/:identifier/reject')
+  @SearchSync('experience', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Experience rejected', type: ExperienceDto })
   async reject(@Param('identifier') identifier: string, @Body() body: { reason: string }, @GetUser() user: User) {

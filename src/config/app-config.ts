@@ -94,6 +94,13 @@ export interface EnvironmentVariables {
     licenseKey: string;
     dbPath: string;
   };
+  algolia: {
+    appId: string;
+    adminApiKey: string;
+    indexPrefix: string;
+    syncEnabled: boolean;
+    reindexSecret: string;
+  };
   frontendUrl: string;
 }
 
@@ -203,6 +210,15 @@ export const appConfig = (): EnvironmentVariables => ({
     accountId: process.env.MAXMIND_ACCOUNT_ID || '',
     licenseKey: process.env.MAXMIND_LICENSE_KEY || '',
     dbPath: process.env.GEOLITE_DB_PATH || './geoip/GeoLite2-City.mmdb',
+  },
+  // Algolia (search). Safe mode: without adminApiKey AND syncEnabled this backend never writes to
+  // Algolia — only production holds the write key, so the local DB can never touch prod_catalog.
+  algolia: {
+    appId: process.env.ALGOLIA_APP_ID || '',
+    adminApiKey: process.env.ALGOLIA_ADMIN_API_KEY || '',
+    indexPrefix: process.env.ALGOLIA_INDEX_PREFIX || 'prod',
+    syncEnabled: process.env.SEARCH_SYNC_ENABLED === 'true',
+    reindexSecret: process.env.SEARCH_REINDEX_SECRET || '',
   },
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
 });

@@ -39,6 +39,7 @@ import { EntityOwnershipResolver } from '../common/services/entity-ownership.res
 import { User } from '../users/entities';
 import { TENANT_ID_KEY } from '../tenant/tenant.interceptor';
 import { RequestLocale } from '../translations/request-locale.decorator';
+import { SearchSync } from 'src/modules/search/decorators/search-sync.decorator';
 
 @Controller(SwaggerTags.Commerce)
 @ApiTags(SwaggerTags.Commerce)
@@ -112,6 +113,7 @@ export class CommerceController {
   // * SUBMIT COMMERCE FOR REVIEW (owner action)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post(':identifier/submit-for-review')
+  @SearchSync('commerce', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Commerce submitted for review', type: CommerceFullDto })
   submitForReview(@Param('identifier') identifier: string, @GetUser() user: User) {
@@ -122,6 +124,7 @@ export class CommerceController {
   // * APPROVE COMMERCE (admin action)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/:identifier/approve')
+  @SearchSync('commerce', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Commerce approved', type: CommerceFullDto })
   async approve(@Param('identifier') identifier: string, @GetUser() user: User) {
@@ -133,6 +136,7 @@ export class CommerceController {
   // * REJECT COMMERCE (admin action)
   // * ----------------------------------------------------------------------------------------------------------------
   @Post('admin/:identifier/reject')
+  @SearchSync('commerce', { param: 'identifier' })
   @Auth()
   @ApiOkResponse({ description: 'Commerce rejected', type: CommerceFullDto })
   async reject(@Param('identifier') identifier: string, @Body() body: { reason: string }, @GetUser() user: User) {
@@ -154,6 +158,7 @@ export class CommerceController {
   // * CREATE COMMERCE
   // * ----------------------------------------------------------------------------------------------------------------
   @Post()
+  @SearchSync('commerce', { fromResponse: true })
   @Auth()
   @ApiOkResponse({ description: 'Commerce Created', type: CommerceFullDto })
   create(@Body() createCommerceDto: CreateCommerceDto, @GetUser() user: User) {

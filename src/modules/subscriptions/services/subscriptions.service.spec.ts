@@ -57,6 +57,7 @@ describe('SubscriptionsService — freemium checkout & activation', () => {
       config as any,
       ownership as any,
       resend as any,
+      { mark: jest.fn() } as any,
     );
   });
 
